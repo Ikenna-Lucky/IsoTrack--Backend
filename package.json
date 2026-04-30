@@ -9,8 +9,9 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "bun run src/db/migrate.ts",
     "db:push": "drizzle-kit push",
+    "db:seed": "bun run src/db/seed.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {

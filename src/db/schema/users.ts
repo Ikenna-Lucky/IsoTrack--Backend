@@ -1,32 +1,34 @@
-import { pgTable, text, timestamp, pgEnum, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import { userRoleEnum } from "./enums";
 import { businesses } from "./businesses";
 import { drivers } from "./drivers";
 import { notifications } from "./notifications";
 
-export const userRoleEnum = pgEnum("user_role", [
-  "business",
-  "driver",
-  "customer",
-]);
-
-export const users = pgTable("users", {
-  id: text("id").primaryKey(),
-  email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
-  name: text("name").notNull(),
-  role: userRoleEnum("role").notNull(),
-  phone: text("phone"),
-  avatar: text("avatar"),
-  isEmailVerified: boolean("is_email_verified").default(false).notNull(),
-  isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull().unique(),
+    passwordHash: text("password_hash").notNull(),
+    name: text("name").notNull(),
+    role: userRoleEnum("role").notNull(),
+    phone: text("phone"),
+    avatar: text("avatar"),
+    isEmailVerified: boolean("is_email_verified").default(false).notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    index("users_email_idx").on(t.email),
+    index("users_role_idx").on(t.role),
+  ],
+);
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   business: one(businesses, {

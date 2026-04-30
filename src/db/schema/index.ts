@@ -1,4 +1,7 @@
-// Re-export all schema tables from one place
+// Enums must be exported first — all table files import from here
+export * from "./enums";
+
+// Tables
 export * from "./users";
 export * from "./businesses";
 export * from "./drivers";
