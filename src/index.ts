@@ -15,6 +15,7 @@ import { notificationsRouter } from "@/routes/notifications";
 import { paymentsRouter } from "@/routes/payments";
 import { trackingRouter } from "@/routes/tracking";
 import { registerSocketHandlers } from "@/socket/handlers";
+import { startNotificationWorker } from "@/workers/notification.worker";
 import { env } from "@/lib/env";
 
 // ─── Hono app ─────────────────────────────────────────────────────────────────
@@ -102,6 +103,7 @@ const io = new Server(httpServer, {
 });
 
 registerSocketHandlers(io);
+startNotificationWorker();
 
 console.log(`
 ╔══════════════════════════════════════════╗
@@ -112,6 +114,7 @@ console.log(`
 ║  Env      : ${String(env.NODE_ENV).padEnd(28)}║
 ║  API Base : /api/v1                      ║
 ║  WS       : Socket.io attached           ║
+║  Worker   : Notification queue active    ║
 ╚══════════════════════════════════════════╝
 `);
 
