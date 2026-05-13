@@ -18,10 +18,10 @@ import { registerSocketHandlers } from "@/socket/handlers";
 import { startNotificationWorker } from "@/workers/notification.worker";
 import { env } from "@/lib/env";
 
-// ─── Hono app ─────────────────────────────────────────────────────────────────
+// Hono app
 const app = new Hono();
 
-// ─── Global middleware ────────────────────────────────────────────────────────
+// Global middleware
 app.use("*", logger());
 app.use("*", prettyJSON());
 app.use("*", secureHeaders());
@@ -36,7 +36,7 @@ app.use(
   }),
 );
 
-// ─── Health check ─────────────────────────────────────────────────────────────
+// Health check
 app.get("/health", (c) => {
   return c.json({
     status: "ok",

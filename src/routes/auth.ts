@@ -19,6 +19,8 @@ import {
   createUser,
   sanitizeUser,
 } from "@/db/queries/users";
+import { db } from "@/db";
+import { businesses, drivers } from "@/db/schema";
 import { success, error } from "@/lib/response";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -45,27 +47,43 @@ function clearRefreshCookie(c: Parameters<typeof deleteCookie>[0]) {
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
-const registerSchema = z.object({
-  name: z
-    .string()
-    .min(2, "Name must be at least 2 characters")
-    .max(100, "Name too long"),
-  email: z.string().email("Invalid email address"),
-  password: z
-    .string()
-    .min(8, "Password must be at least 8 characters")
-    .max(128, "Password too long")
-    .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
-    .regex(/[0-9]/, "Password must contain at least one number"),
-  role: z.enum(["business", "driver", "customer"], {
-    errorMap: () => ({ message: "Role must be business, driver, or customer" }),
-  }),
-  phone: z
-    .string()
-    .regex(/^\+?[1-9]\d{6,14}$/, "Invalid phone number")
-    .optional()
-    .or(z.literal("")),
-});
+const registerSchema = z
+  .object({
+    name: z
+      .string()
+      .min(2, "Name must be at least 2 characters")
+      .max(100, "Name too long"),
+    email: z.string().email("Invalid email address"),
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .max(128, "Password too long")
+      .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+      .regex(/[0-9]/, "Password must contain at least one number"),
+    role: z.enum(["business", "driver", "customer"], {
+      errorMap: () => ({ message: "Role must be business, driver, or customer" }),
+    }),
+    phone: z
+      .string()
+      .regex(/^\+?[1-9]\d{6,14}$/, "Invalid phone number")
+      .optional()
+      .or(z.literal("")),
+    // Business-specific
+    businessName: z.string().min(2).max(100).optional(),
+    // Driver-specific
+    vehicleType: z.enum(["bike", "car", "van", "truck"]).optional(),
+    vehiclePlate: z.string().min(3).max(20).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.role === "driver") {
+      if (!data.vehicleType) {
+        ctx.addIssue({ code: "custom", path: ["vehicleType"], message: "Vehicle type is required for drivers" });
+      }
+      if (!data.vehiclePlate) {
+        ctx.addIssue({ code: "custom", path: ["vehiclePlate"], message: "Vehicle plate is required for drivers" });
+      }
+    }
+  });
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -101,6 +119,27 @@ authRouter.post("/register", zValidator("json", registerSchema), async (c) => {
     isEmailVerified: false,
     isActive: true,
   });
+
+  // ── Create role-specific profile ──────────────────────────────────────────
+  if (body.role === "business") {
+    await db.insert(businesses).values({
+      id: nanoid(),
+      userId: user.id,
+      businessName: body.businessName ?? body.name,
+    });
+  }
+
+  if (body.role === "driver") {
+    await db.insert(drivers).values({
+      id: nanoid(),
+      userId: user.id,
+      vehicleType: body.vehicleType!,
+      vehiclePlate: body.vehiclePlate!,
+      status: "offline",
+      rating: 5.0,
+      totalDeliveries: 0,
+    });
+  }
 
   // Issue tokens
   const [accessToken, refreshToken] = await Promise.all([

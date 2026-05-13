@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { drivers } from "@/db/schema";
 import type { Driver, NewDriver } from "@/db/schema";
@@ -22,12 +22,8 @@ export async function findDriverByUserId(userId: string) {
 
 export async function findAvailableDrivers() {
   return db.query.drivers.findMany({
-    where: and(
-      eq(drivers.status, "available"),
-      eq(drivers.isActive ?? true, true),
-    ),
+    where: eq(drivers.status, "available"),
     with: { user: true },
-    // Closest driver logic handled at the service layer using currentLocation
   });
 }
 
