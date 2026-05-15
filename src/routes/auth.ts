@@ -20,7 +20,9 @@ import {
   sanitizeUser,
 } from "@/db/queries/users";
 import { db } from "@/db";
-import { businesses, drivers } from "@/db/schema";
+import { businesses, drivers, users } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { updateUser } from "@/db/queries/users";
 import { success, error } from "@/lib/response";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -215,10 +217,9 @@ authRouter.post("/refresh", async (c) => {
     const user = await findUserById(payload.sub!);
     if (!user || !user.isActive) {
       clearRefreshCookie(c);
-      return error(c, "User not found or inactive", 401);
+      return error(c, "Session expired", 401);
     }
 
-    // Rotate tokens — old refresh token is replaced
     const [newAccessToken, newRefreshToken] = await Promise.all([
       createAccessToken(user.id, user.role),
       createRefreshToken(user.id),
@@ -231,7 +232,6 @@ authRouter.post("/refresh", async (c) => {
         user: sanitizeUser(user),
         accessToken: newAccessToken,
       },
-      message: "Token refreshed successfully",
     });
   } catch {
     clearRefreshCookie(c);
@@ -241,19 +241,81 @@ authRouter.post("/refresh", async (c) => {
 
 // ─── POST /auth/logout ────────────────────────────────────────────────────────
 
-authRouter.post("/logout", async (c) => {
+authRouter.post("/logout", (c) => {
   clearRefreshCookie(c);
-  return success(c, {
-    data: null,
-    message: "Logged out successfully",
-  });
+  return success(c, { message: "Logged out successfully" });
 });
 
-// ─── GET /auth/me ─────────────────────────────────────────────────────────────
+// ─── PATCH /auth/me ───────────────────────────────────────────────────────────
+// Update the authenticated user's own profile (name, phone, avatar URL).
 
-authRouter.get("/me", authenticate, async (c) => {
-  const user = c.get("user");
-  return success(c, {
-    data: { user: sanitizeUser(user) },
+const updateMeSchema = z.object({
+  name:             z.string().min(2).max(100).optional(),
+  phone:            z.string().regex(/^\+?[1-9]\d{6,14}$/).optional().or(z.literal("")).or(z.null()),
+  avatar:           z.string().optional().or(z.literal("")).or(z.null()),
+  emergencyContact: z.string().max(20).optional().or(z.literal("")).or(z.null()),
+});
+
+authRouter.patch("/me", authenticate, zValidator("json", updateMeSchema), async (c) => {
+  const userId = c.get("userId" as never) as string;
+  const body   = c.req.valid("json");
+
+  const updated = await updateUser(userId, {
+    ...(body.name             !== undefined ? { name: body.name }                           : {}),
+    ...(body.phone            !== undefined ? { phone: body.phone || null }                 : {}),
+    ...(body.avatar           !== undefined ? { avatar: body.avatar || null }               : {}),
+    ...(body.emergencyContact !== undefined ? { emergencyContact: body.emergencyContact || null } : {}),
   });
+
+  if (!updated) return error(c, "User not found", 404);
+
+  return success(c, { data: sanitizeUser(updated), message: "Profile updated" });
+});
+
+// ─── DELETE /auth/me ──────────────────────────────────────────────────────────
+// Permanently delete the authenticated user and all associated data.
+
+authRouter.delete("/me", authenticate, async (c) => {
+  const userId = c.get("userId" as never) as string;
+
+  const user = await findUserById(userId);
+  if (!user) return error(c, "User not found", 404);
+
+  // Cascade delete: drivers/businesses/shipments are handled by FK onDelete cascade.
+  await db.delete(users).where(eq(users.id, userId));
+
+  clearRefreshCookie(c);
+  return success(c, { message: "Account permanently deleted" });
+});
+
+// ─── PATCH /auth/password ─────────────────────────────────────────────────────
+// Change the authenticated user's password.
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(128)
+    .regex(/[A-Z]/, "Must contain an uppercase letter")
+    .regex(/[0-9]/, "Must contain a number"),
+});
+
+authRouter.patch("/password", authenticate, zValidator("json", changePasswordSchema), async (c) => {
+  const userId = c.get("userId" as never) as string;
+  const { currentPassword, newPassword } = c.req.valid("json");
+
+  const user = await findUserById(userId);
+  if (!user) return error(c, "User not found", 404);
+
+  const match = await compare(currentPassword, user.passwordHash);
+  if (!match) return error(c, "Current password is incorrect", 400);
+
+  const newHash = await hash(newPassword, BCRYPT_ROUNDS);
+
+  // Re-use updateUser with a raw set — we need to update passwordHash
+  await db.update(users).set({ passwordHash: newHash, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+
+  return success(c, { message: "Password changed successfully" });
 });

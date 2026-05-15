@@ -8,6 +8,13 @@
       "when": 1777561424482,
       "tag": "0000_graceful_the_enforcers",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1747134000000,
+      "tag": "0001_settings_fields",
+      "breakpoints": true
     }
   ]
 }

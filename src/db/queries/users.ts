@@ -45,7 +45,7 @@ export async function updateUser(
   data: Partial<
     Pick<
       User,
-      "name" | "phone" | "avatar" | "isEmailVerified" | "isActive" | "updatedAt"
+      "name" | "phone" | "avatar" | "emergencyContact" | "isEmailVerified" | "isActive" | "updatedAt"
     >
   >,
 ): Promise<User | null> {

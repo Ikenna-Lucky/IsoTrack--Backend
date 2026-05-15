@@ -21,6 +21,11 @@ export const drivers = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     vehicleType: vehicleTypeEnum("vehicle_type").notNull(),
     vehiclePlate: text("vehicle_plate").notNull(),
+    vehicleModel: text("vehicle_model"),
+    vehicleColor: text("vehicle_color"),
+    vehicleYear: text("vehicle_year"),
+    vehicleInsurance: text("vehicle_insurance"),
+    notificationPreferences: jsonb("notification_preferences"),
     status: driverStatusEnum("status").default("offline").notNull(),
     currentLocation: jsonb("current_location"), // { lat, lng }
     rating: real("rating").default(5.0).notNull(),
