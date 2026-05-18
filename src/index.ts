@@ -74,12 +74,33 @@ app.notFound((c) => {
 // ─── Global error handler ─────────────────────────────────────────────────────
 app.onError((err, c) => {
   console.error(`[Error] ${c.req.method} ${c.req.path}:`, err);
+
+  // Never expose raw database or internal error details to the client.
+  // Map known low-level error types to friendly messages; fall back to generic.
+  const name = (err as { name?: string }).name ?? "";
+  const code = (err as { code?: string }).code ?? "";
+
+  // NeonDbError / postgres driver errors
+  const isDbError =
+    name === "NeonDbError" ||
+    name === "DatabaseError" ||
+    code === "42703" || // undefined_column
+    code === "42P01" || // undefined_table
+    code === "23505" || // unique_violation
+    code === "23503" || // foreign_key_violation
+    code === "08006" || // connection_failure
+    name.toLowerCase().includes("neon") ||
+    err.message?.toLowerCase().includes("neon internal");
+
+  const clientMessage = isDbError
+    ? "A database error occurred. Please try again later."
+    : "Something went wrong. Please try again.";
+
   return c.json(
     {
       success: false,
       error: "INTERNAL_SERVER_ERROR",
-      message:
-        env.NODE_ENV === "production" ? "Something went wrong" : err.message,
+      message: clientMessage,
     },
     500,
   );

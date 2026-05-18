@@ -2,18 +2,42 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, desc } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { authenticate, requireRole } from "@/middleware/auth";
 import { db } from "@/db";
 import { businesses, shipments } from "@/db/schema";
 import { getBusinessShipmentStats } from "@/db/queries/shipments";
-import { sanitizeUser } from "@/db/queries/users";
+import { findUserById, sanitizeUser } from "@/db/queries/users";
 import { success, error } from "@/lib/response";
 
 export const businessRouter = new Hono();
 
 businessRouter.use("*", authenticate, requireRole("business"));
 
-// ─── Schemas ──────────────────────────────────────────────────────────────────
+// Resolve (or auto-create) the business row for a user.
+// If a business-role user has no profile row (e.g. registered before the bug
+// was fixed), we create one on the fly so the dashboard always loads.
+async function ensureBusiness(userId: string) {
+  const [existing] = await db
+    .select({ id: businesses.id })
+    .from(businesses)
+    .where(eq(businesses.userId, userId))
+    .limit(1);
+
+  if (existing) return existing;
+
+  const user = await findUserById(userId);
+  const [created] = await db
+    .insert(businesses)
+    .values({
+      id: nanoid(),
+      userId,
+      businessName: user?.name ?? "My Business",
+    })
+    .returning({ id: businesses.id });
+
+  return created;
+}
 
 const updateProfileSchema = z.object({
   businessName: z.string().min(2).max(100).optional(),
@@ -26,39 +50,30 @@ const updateProfileSchema = z.object({
     .optional(),
 });
 
-// ─── GET /business/profile ────────────────────────────────────────────────────
-
+// GET /business/profile
 businessRouter.get("/profile", async (c) => {
-  const userId = c.get("userId");
+  const userId = c.get("userId" as never) as string;
+  const biz = await ensureBusiness(userId);
 
-  const biz = await db.query.businesses.findFirst({
-    where: eq(businesses.userId, userId),
+  const full = await db.query.businesses.findFirst({
+    where: eq(businesses.id, biz.id),
     with: { user: true },
   });
 
-  if (!biz) return error(c, "Business profile not found", 404);
+  if (!full) return error(c, "Business profile not found", 404);
 
-  return success(c, {
-    data: { ...biz, user: sanitizeUser(biz.user) },
-  });
+  return success(c, { data: { ...full, user: sanitizeUser(full.user) } });
 });
 
-// ─── PATCH /business/profile ──────────────────────────────────────────────────
-
+// PATCH /business/profile
 businessRouter.patch(
   "/profile",
   zValidator("json", updateProfileSchema),
   async (c) => {
-    const userId = c.get("userId");
-    const body = c.req.valid("json");
+    const userId = c.get("userId" as never) as string;
+    const body   = c.req.valid("json");
 
-    const [biz] = await db
-      .select({ id: businesses.id })
-      .from(businesses)
-      .where(eq(businesses.userId, userId))
-      .limit(1);
-
-    if (!biz) return error(c, "Business profile not found", 404);
+    const biz = await ensureBusiness(userId);
 
     const [updated] = await db
       .update(businesses)
@@ -70,39 +85,25 @@ businessRouter.patch(
   },
 );
 
-// ─── GET /business/analytics ──────────────────────────────────────────────────
-
+// GET /business/analytics
 businessRouter.get("/analytics", async (c) => {
-  const userId = c.get("userId");
+  const userId = c.get("userId" as never) as string;
+  const biz    = await ensureBusiness(userId);
 
-  const [biz] = await db
-    .select({ id: businesses.id })
-    .from(businesses)
-    .where(eq(businesses.userId, userId))
-    .limit(1);
-
-  if (!biz) return error(c, "Business profile not found", 404);
-
-  // Shipment status breakdown
   const statusStats = await getBusinessShipmentStats(biz.id);
 
-  // Revenue (sum of delivered shipments in kobo)
   const revenueRows = await db
     .select({ priceKobo: shipments.priceKobo })
     .from(shipments)
     .where(eq(shipments.businessId, biz.id));
 
-  const totalRevenueKobo = revenueRows.reduce(
-    (sum, s) => sum + s.priceKobo,
-    0,
-  );
+  const totalRevenueKobo = revenueRows.reduce((acc, s) => acc + s.priceKobo, 0);
 
-  // Last 5 recent shipments
   const recentShipments = await db.query.shipments.findMany({
     where: eq(shipments.businessId, biz.id),
     with: { driver: { with: { user: true } }, customer: true },
     orderBy: desc(shipments.createdAt),
-    limit: 5,
+    limit: 10,
   });
 
   return success(c, {
