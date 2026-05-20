@@ -18,6 +18,7 @@ import { businesses, drivers } from "@/db/schema";
 import { success, paginated, error } from "@/lib/response";
 import { enqueueShipmentEmail } from "@/lib/queue";
 import type { ShipmentMilestone } from "@/lib/email";
+import { createInAppNotification, shipmentNotificationContent } from "@/lib/notifications";
 
 export const shipmentsRouter = new Hono();
 
@@ -183,7 +184,7 @@ shipmentsRouter.patch(
   requireRole("business", "driver"),
   zValidator("json", updateStatusSchema),
   async (c) => {
-    const { id } = c.req.param();
+    const id = c.req.param("id")!;
     const { status: newStatus, note } = c.req.valid("json");
 
     const shipment = await findShipmentById(id);
@@ -215,16 +216,36 @@ shipmentsRouter.patch(
       message: note ?? "",
     });
 
+    // Write in-app notification for the business owner
+    const bizRow = await db
+      .select({ userId: businesses.userId })
+      .from(businesses)
+      .where(eq(businesses.id, shipment.businessId))
+      .limit(1);
+    if (bizRow[0]) {
+      const { title, message } = shipmentNotificationContent(
+        newStatus,
+        shipment.trackingId ?? "",
+        shipment.driver?.user?.name,
+      );
+      void createInAppNotification({
+        userId:   bizRow[0].userId,
+        title,
+        message,
+        metadata: { trackingId: shipment.trackingId ?? "", status: newStatus },
+      });
+    }
+
     if (EMAIL_MILESTONES.has(newStatus) && shipment.customer?.email) {
       enqueueShipmentEmail(newStatus as ShipmentMilestone, {
-        trackingId: shipment.trackingId,
+        trackingId: shipment.trackingId ?? "",
         customerName: shipment.customer.name,
         customerEmail: shipment.customer.email,
         pickup: addrStr(shipment.pickupAddress),
         delivery: addrStr(shipment.deliveryAddress),
         packageType: shipment.description,
         amount: formatNgn(shipment.priceKobo),
-        driverName: shipment.driver?.user?.name,
+        driverName: shipment.driver?.user?.name ?? "",
       }).catch((err: Error) =>
         console.error("[Queue] enqueue failed:", err.message),
       );
@@ -239,7 +260,7 @@ shipmentsRouter.patch(
   requireRole("business"),
   zValidator("json", assignDriverSchema),
   async (c) => {
-    const { id } = c.req.param();
+    const id = c.req.param("id")!;
     const { driverId } = c.req.valid("json");
 
     const shipment = await findShipmentById(id);
@@ -263,16 +284,36 @@ shipmentsRouter.patch(
       message: `Assigned to driver ${driverId}`,
     });
 
+    // Write in-app notification for the business owner
+    const bizRowAssign = await db
+      .select({ userId: businesses.userId })
+      .from(businesses)
+      .where(eq(businesses.id, shipment.businessId))
+      .limit(1);
+    if (bizRowAssign[0]) {
+      const { title, message } = shipmentNotificationContent(
+        "assigned",
+        shipment.trackingId ?? "",
+        driver.vehiclePlate,
+      );
+      void createInAppNotification({
+        userId:   bizRowAssign[0].userId,
+        title,
+        message,
+        metadata: { trackingId: shipment.trackingId ?? "", status: "assigned" },
+      });
+    }
+
     if (shipment.customer?.email) {
       enqueueShipmentEmail("assigned", {
-        trackingId: shipment.trackingId,
+        trackingId: shipment.trackingId ?? "",
         customerName: shipment.customer.name,
         customerEmail: shipment.customer.email,
         pickup: addrStr(shipment.pickupAddress),
         delivery: addrStr(shipment.deliveryAddress),
         packageType: shipment.description,
         amount: formatNgn(shipment.priceKobo),
-        driverName: driver.vehiclePlate,
+        driverName: driver.vehiclePlate ?? "",
       }).catch((err: Error) =>
         console.error("[Queue] enqueue failed:", err.message),
       );
@@ -283,12 +324,16 @@ shipmentsRouter.patch(
 );
 
 shipmentsRouter.delete("/:id", requireRole("business"), async (c) => {
-  const shipment = await findShipmentById(c.req.param("id"));
+  const shipment = await findShipmentById(c.req.param("id")!);
   if (!shipment) return error(c, "Shipment not found", 404);
 
   const allowed = VALID_TRANSITIONS[shipment.status] ?? [];
   if (!allowed.includes("cancelled")) {
-    return error(c, `Cannot cancel a "${shipment.status}" shipment`, 422);
+    return error(
+      c,
+      `Shipments with status "${shipment.status}" cannot be cancelled`,
+      422,
+    );
   }
 
   await updateShipment(shipment.id, { status: "cancelled" });
@@ -296,7 +341,7 @@ shipmentsRouter.delete("/:id", requireRole("business"), async (c) => {
     id: nanoid(),
     shipmentId: shipment.id,
     status: "cancelled",
-    message: "",
+    message: "Shipment cancelled by business",
   });
 
   return success(c, { data: null, message: "Shipment cancelled" });

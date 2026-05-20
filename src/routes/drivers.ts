@@ -176,7 +176,7 @@ driversRouter.patch("/me/location", requireRole("driver"), zValidator("json", lo
   if (!driver) return error(c, "Driver profile not found", 404);
 
   await updateDriverLocation(driver.id, { lat, lng });
-  return success(c, { message: "Location updated" });
+  return success(c, { data: null, message: "Location updated" });
 });
 
 // ─── GET /drivers/available ───────────────────────────────────────────────────
@@ -192,7 +192,7 @@ driversRouter.get("/available", requireRole("business"), async (c) => {
 // Business: get a specific driver by ID.
 
 driversRouter.get("/:id", requireRole("business"), async (c) => {
-  const id     = c.req.param("id");
+  const id     = c.req.param("id")!;
   const driver = await findDriverById(id);
   if (!driver) return error(c, "Driver not found", 404);
   return success(c, { data: { ...driver, user: sanitizeUser(driver.user) } });
