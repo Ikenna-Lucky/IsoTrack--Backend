@@ -9,54 +9,69 @@ export const notificationsRouter = new Hono();
 
 notificationsRouter.use("*", authenticate);
 
-// ─── GET /notifications — user's notifications ────────────────────────────────
-
+// GET /notifications — current user's notifications, newest first (max 50)
 notificationsRouter.get("/", async (c) => {
-  const userId = c.get("userId");
+  const userId = c.get("userId" as never) as string;
 
-  const data = await db.query.notifications.findMany({
-    where: eq(notifications.userId, userId),
-    orderBy: desc(notifications.createdAt),
-    limit: 50,
-  });
+  const rows = await db
+    .select()
+    .from(notifications)
+    .where(eq(notifications.userId, userId))
+    .orderBy(desc(notifications.createdAt))
+    .limit(50);
 
-  return success(c, { data });
+  return success(c, { data: rows });
 });
 
-// ─── PATCH /notifications/read-all — mark all as read ────────────────────────
-// NOTE: must be before /:id so "read-all" isn't treated as an id
-
+// PATCH /notifications/read-all — mark every unread notification as read
 notificationsRouter.patch("/read-all", async (c) => {
-  const userId = c.get("userId");
+  const userId = c.get("userId" as never) as string;
 
   await db
     .update(notifications)
     .set({ isRead: true })
-    .where(
-      and(eq(notifications.userId, userId), eq(notifications.isRead, false)),
-    );
+    .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
 
   return success(c, { data: null, message: "All notifications marked as read" });
 });
 
-// ─── PATCH /notifications/:id/read — mark one as read ────────────────────────
-
+// PATCH /notifications/:id/read — mark a single notification as read
 notificationsRouter.patch("/:id/read", async (c) => {
-  const userId = c.get("userId");
-  const { id } = c.req.param();
+  const userId = c.get("userId" as never) as string;
+  const { id }  = c.req.param();
 
-  const [notification] = await db
-    .select()
+  const [existing] = await db
+    .select({ id: notifications.id, userId: notifications.userId })
     .from(notifications)
-    .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
+    .where(eq(notifications.id, id))
     .limit(1);
 
-  if (!notification) return error(c, "Notification not found", 404);
+  if (!existing)            return error(c, "Notification not found", 404);
+  if (existing.userId !== userId) return error(c, "Forbidden", 403);
 
-  await db
+  const [updated] = await db
     .update(notifications)
     .set({ isRead: true })
-    .where(eq(notifications.id, id));
+    .where(eq(notifications.id, id))
+    .returning();
 
-  return success(c, { data: null, message: "Notification marked as read" });
+  return success(c, { data: updated });
+});
+
+// DELETE /notifications/:id — remove a single notification
+notificationsRouter.delete("/:id", async (c) => {
+  const userId = c.get("userId" as never) as string;
+  const { id }  = c.req.param();
+
+  const [existing] = await db
+    .select({ id: notifications.id, userId: notifications.userId })
+    .from(notifications)
+    .where(eq(notifications.id, id))
+    .limit(1);
+
+  if (!existing)            return error(c, "Notification not found", 404);
+  if (existing.userId !== userId) return error(c, "Forbidden", 403);
+
+  await db.delete(notifications).where(eq(notifications.id, id));
+  return success(c, { data: null, message: "Notification deleted" });
 });

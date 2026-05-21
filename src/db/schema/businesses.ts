@@ -11,6 +11,8 @@ export const businesses = pgTable("businesses", {
   businessName: text("business_name").notNull(),
   logo: text("logo"),
   address: jsonb("address"),
+  notificationPreferences: jsonb("notification_preferences"),
+  preferences: jsonb("preferences"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
