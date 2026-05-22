@@ -63,12 +63,17 @@ export async function findShipmentsByBusiness(
   };
 }
 
-export async function findShipmentsByDriver(driverId: string) {
+export async function findShipmentsByDriver(
+  driverId: string,
+  opts: { includeCompleted?: boolean } = {},
+) {
   return db.query.shipments.findMany({
-    where: and(
-      eq(shipments.driverId, driverId),
-      sql`${shipments.status} NOT IN ('delivered', 'failed', 'cancelled')`,
-    ),
+    where: opts.includeCompleted
+      ? eq(shipments.driverId, driverId)
+      : and(
+          eq(shipments.driverId, driverId),
+          sql`${shipments.status} NOT IN ('delivered', 'failed', 'cancelled')`,
+        ),
     with: {
       customer: true,
       events: { orderBy: desc(shipmentEvents.createdAt), limit: 1 },

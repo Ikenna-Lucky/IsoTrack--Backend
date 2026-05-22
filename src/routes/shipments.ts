@@ -15,6 +15,7 @@ import {
 } from "@/db/queries/shipments";
 import { db } from "@/db";
 import { businesses, drivers } from "@/db/schema";
+import { findUserByEmail } from "@/db/queries/users";
 import { success, paginated, error } from "@/lib/response";
 import { enqueueShipmentEmail } from "@/lib/queue";
 import type { ShipmentMilestone } from "@/lib/email";
@@ -67,6 +68,7 @@ const createShipmentSchema = z.object({
     state: z.string().default("Lagos"),
   }),
   customerId: z.string().optional(),
+  customerEmail: z.string().email().optional(),
   scheduledPickup: z.string().datetime().optional(),
   priceKobo: z.number().int().positive(),
 });
@@ -115,7 +117,8 @@ shipmentsRouter.get("/", async (c) => {
       .where(eq(drivers.userId, userId))
       .limit(1);
     if (!driver) return error(c, "Driver profile not found", 404);
-    const data = await findShipmentsByDriver(driver.id);
+    const includeCompleted = c.req.query("includeCompleted") === "true";
+    const data = await findShipmentsByDriver(driver.id, { includeCompleted });
     return success(c, { data });
   }
 
@@ -142,13 +145,26 @@ shipmentsRouter.post(
       .limit(1);
     if (!biz) return error(c, "Business profile not found", 404);
 
+    // ── Resolve customer by email if provided ─────────────────────────────────
+    // Businesses know their customer's email; we look them up and link the
+    // account so the shipment appears on the customer's dashboard automatically.
+    let resolvedCustomerId: string | null = body.customerId ?? null;
+    if (!resolvedCustomerId && body.customerEmail) {
+      const customerUser = await findUserByEmail(body.customerEmail);
+      if (customerUser && customerUser.role === "customer") {
+        resolvedCustomerId = customerUser.id;
+      }
+      // If the email doesn't match a registered customer account we silently
+      // skip — the shipment is still created; the customer can track by ID.
+    }
+
     const trackingId = `IST-${nanoid(8).toUpperCase()}`;
 
     const shipment = await createShipment({
       id: nanoid(),
       trackingId,
       businessId: biz.id,
-      customerId: body.customerId ?? null,
+      customerId: resolvedCustomerId,
       description: body.description,
       weightKg: body.weightKg,
       pickupAddress: body.pickupAddress,
