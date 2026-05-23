@@ -7,6 +7,7 @@ import { serve } from "@hono/node-server";
 import { Server } from "socket.io";
 import type { ServerType } from "@hono/node-server";
 
+import { HTTPException } from "hono/http-exception";
 import { authRouter } from "@/routes/auth";
 import { shipmentsRouter } from "@/routes/shipments";
 import { driversRouter } from "@/routes/drivers";
@@ -73,6 +74,13 @@ app.notFound((c) => {
 
 // ─── Global error handler ─────────────────────────────────────────────────────
 app.onError((err, c) => {
+  // Let Hono's HTTPException pass through with its correct status code.
+  // Without this, thrown HTTPException(401) would get swallowed into a 500,
+  // and the frontend's axios refresh interceptor would never trigger.
+  if (err instanceof HTTPException) {
+    return err.getResponse();
+  }
+
   console.error(`[Error] ${c.req.method} ${c.req.path}:`, err);
 
   // Never expose raw database or internal error details to the client.
