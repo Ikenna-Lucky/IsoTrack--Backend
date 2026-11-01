@@ -41,3 +41,32 @@ export function acceptDriverInvitationStatement(input: Acceptance) {
     new_driver.business_id as "businessId"
   from new_driver cross join accepted`;
 }
+
+export function acceptExistingDriverInvitationStatement(userId: string, tokenHash: string) {
+  return sql`with invitation as materialized (
+    select i.id, i.business_id from driver_invitations i
+    join users u on u.email = i.email
+    where i.token_hash = ${tokenHash} and u.id = ${userId}
+      and u.role = 'driver' and u.is_active = true
+      and i.accepted_at is null and i.revoked_at is null
+      and i.expires_at > statement_timestamp()
+    for update of i
+  ), joined_driver as (
+    update drivers d set business_id = invitation.business_id,
+      status = 'offline', updated_at = statement_timestamp()
+    from invitation
+    where d.user_id = ${userId} and d.business_id is null
+      and not exists (
+        select 1 from shipments s where s.driver_id = d.id
+          and s.business_id <> invitation.business_id
+      )
+    returning d.id, d.user_id, d.business_id
+  ), accepted as (
+    update driver_invitations set accepted_at = statement_timestamp()
+    where id in (select id from invitation) and exists (select 1 from joined_driver)
+    returning id
+  )
+  select joined_driver.user_id as "userId", joined_driver.id as "driverId",
+    joined_driver.business_id as "businessId"
+  from joined_driver cross join accepted`;
+}

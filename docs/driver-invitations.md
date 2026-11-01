@@ -13,6 +13,11 @@ All paths are relative to `/api/v1/driver-invitations`.
 
 Acceptance body:
 
+For an existing driver, use `POST /accept-existing` while signed in, sending only
+`{ "token": "..." }`. The server derives identity and email from trusted account
+state. The response is 200 on success or a generic 409 when enrollment is not
+available. The body below is for new-account acceptance only.
+
 ```json
 {
   "token": "the-43-character-token-returned-at-creation",
@@ -48,13 +53,19 @@ is never overwritten, converted to a driver, or transferred to another fleet.
 
 ## Deliberate boundaries and release blockers
 
-This first flow accepts new accounts only. Existing unlinked driver accounts need
-a separate authenticated acceptance flow; existing customers/business accounts
-cannot be converted through an invitation. Membership transfer is not supported.
+Existing unlinked drivers can accept while signed in. Already-linked drivers,
+inactive users, wrong roles/emails, missing profiles, unavailable invitations and
+unreconciled cross-business shipment history cannot enroll. Passwords remain
+unchanged, customer/business roles cannot be converted, and transfers are not
+supported. Joining resets driver availability to offline. Profile assignment and
+invitation consumption are atomic; competing invitations can join only one fleet.
 
 Do not release publicly until distributed abuse controls for issuing/accepting
 invitations, HTTP authentication/authorization regression coverage, email
-verification, legacy enrollment and operational telemetry are complete. The SQL
+verification, legacy data reconciliation and operational telemetry are complete. The SQL
 integration suite proves database invariants, not end-to-end routing, deployed
 provider compatibility or delivered emails. Apply migration `0003` before using
 the new endpoints. No live application database was migrated during development.
+HTTP handler tests use controlled identities and do not establish JWT validation.
+An existing-driver handler integration test executes the production SQL statement
+against PostgreSQL and verifies durable membership and replay rejection.

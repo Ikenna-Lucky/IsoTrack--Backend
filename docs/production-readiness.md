@@ -14,7 +14,7 @@ must be established by measurement. Do not use paid services without approval.
 | --- | --- | --- |
 | Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports | Initial GitHub workflow added; not executed remotely; lint and integration gates outstanding |
 | Response privacy | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles | Query projection implemented; integration unverified |
-| Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | Membership, fleet scoping and new-account invitation lifecycle implemented; existing-account enrollment, abuse controls and HTTP evidence outstanding |
+| Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding |
 | Sessions | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification | Planned |
 | Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Planned |
@@ -122,3 +122,25 @@ Hono routing, provider wiring and deployed environment remain unverified. Existi
 CI discovers the expanded suite; no remote execution is claimed. No live database
 migration or invitation email was performed. Tokens are manually shared for now.
 See `docs/driver-invitations.md` for contracts and remaining release blockers.
+
+## Existing-driver enrollment — 2026-11-02
+
+Added authenticated `/driver-invitations/accept-existing`, accepting only a token.
+The signed-in identity supplies the user ID; the database enforces active driver
+role, matching invitation email, unlinked profile and reconciled shipment history.
+Membership update and invitation consumption are atomic. Credentials remain
+unchanged, fleet transfer is rejected, and new membership starts offline.
+
+Evidence on Node 24.12.0 / disposable PostgreSQL 17:
+
+- Type checking passed.
+- 7 fast tests passed, 0 failed/skipped, including HTTP authorization boundaries,
+  validation, identity spoofing rejection, success and conflict serialization.
+- 23 PostgreSQL integration tests passed, 0 failed/skipped, including existing
+  identity mismatch, inactive/wrong-role/linked accounts, unavailable invitations,
+  unchanged credentials, competing fleet invitations, legacy history denial, and
+  HTTP handler enrollment with persistence and replay checks.
+
+HTTP tests inject controlled identities. Production JWT verification, the parent
+router wiring, deployed Neon transport and remote CI are not established by these
+results. No migration is needed for this batch and no live data was changed.

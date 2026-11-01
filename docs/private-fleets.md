@@ -5,7 +5,7 @@ membership (`drivers.business_id`). Business owners can discover and assign only
 drivers in their own fleet. Drivers can read shipments only while assignment and
 fleet membership both match. Public driver registration returns a denial; account
 creation through the invitation acceptance workflow is documented in
-`docs/driver-invitations.md`. Existing-account enrollment remains outstanding.
+`docs/driver-invitations.md`, including signed-in enrollment of unlinked drivers.
 
 ## Migration
 

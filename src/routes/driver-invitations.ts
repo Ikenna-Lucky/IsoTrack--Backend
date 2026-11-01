@@ -12,7 +12,8 @@ import {
   createInvitationToken,
   hashInvitationToken,
 } from "@/lib/invitation-token";
-import { acceptDriverInvitationStatement } from "@/db/queries/accept-driver-invitation";
+import { acceptDriverInvitationStatement, acceptExistingDriverInvitationStatement } from "@/db/queries/accept-driver-invitation";
+import { createExistingDriverInvitationRouter } from "./existing-driver-invitation";
 import { success, error } from "@/lib/response";
 
 const email = z.string().trim().toLowerCase().email().max(254);
@@ -87,6 +88,14 @@ driverInvitationsRouter.post(
     });
   },
 );
+
+driverInvitationsRouter.route("/", createExistingDriverInvitationRouter({
+  authenticate,
+  accept: async (userId, token) => {
+    const result = await db.execute(acceptExistingDriverInvitationStatement(userId, hashInvitationToken(token)));
+    return result.rows[0] as { userId: string; driverId: string; businessId: string } | undefined;
+  },
+}));
 
 driverInvitationsRouter.use("*", authenticate, requireRole("business"));
 

@@ -8,7 +8,9 @@ import { pgTable, text, PgDialect } from "drizzle-orm/pg-core";
 import { shipmentAccessPredicate } from "../src/db/queries/shipment-access.ts";
 import { fleetAccessPredicate } from "../src/db/queries/fleet-access.ts";
 import { readFileSync } from "node:fs";
-import { acceptDriverInvitationStatement } from "../src/db/queries/accept-driver-invitation.ts";
+import { acceptDriverInvitationStatement, acceptExistingDriverInvitationStatement } from "../src/db/queries/accept-driver-invitation.ts";
+import { createExistingDriverInvitationRouter } from "../src/routes/existing-driver-invitation.ts";
+import { hashInvitationToken } from "../src/lib/invitation-token.ts";
 
 const container = `isotrack-access-test-${randomUUID()}`;
 const image = "postgres:17-alpine";
@@ -32,6 +34,7 @@ function compile(statement) {
   // continue to use driver-bound parameters.
   const text = compiled.sql.replace(/\$(\d+)/g, (_, index) => {
     const value = compiled.params[Number(index) - 1];
+    if (value === null) return "NULL";
     assert.equal(typeof value, "string");
     return `'${value.replaceAll("'", "''")}'`;
   });
@@ -269,4 +272,97 @@ test("revocation competing with acceptance leaves exactly one terminal state", a
     from driver_invitations where id='revoke-race'`));
   assert.ok(state === "t|f" || state === "f|t", state);
   assert.equal(query(inMigrationSchema(sql`select count(*) from users where email='revoke-race@example.test'`)), state === "t|f" ? "1" : "0");
+});
+
+function legacyDriver(suffix, options = {}) {
+  issue(suffix, options.state ?? "pending");
+  query(inMigrationSchema(sql`insert into users(id,email,password_hash,name,role,is_active)
+    values (${`legacy-${suffix}`},${`${suffix}@example.test`},'unchanged','Existing',
+      ${options.role ?? "driver"}::user_role, ${options.active === false ? "false" : "true"}::boolean);
+    insert into drivers(id,user_id,vehicle_type,vehicle_plate,business_id)
+    values (${`legacy-${suffix}`},${`legacy-${suffix}`},'bike','LEGACY',${options.linked ? "biz-b" : null})`));
+}
+
+test("existing unlinked driver joins without changing credentials and cannot replay", () => {
+  legacyDriver("existing-driver");
+  const statement = acceptExistingDriverInvitationStatement("legacy-existing-driver", "hash-existing-driver");
+  assert.equal(query(inMigrationSchema(statement)), "legacy-existing-driver|legacy-existing-driver|biz-a");
+  assert.equal(query(inMigrationSchema(statement)), "");
+  assert.equal(query(inMigrationSchema(sql`select password_hash from users where id='legacy-existing-driver'`)), "unchanged");
+});
+
+test("existing enrollment rejects wrong identity, inactive accounts, wrong roles and unavailable invitations", () => {
+  for (const [suffix, options] of [
+    ["wrong-existing", {}], ["inactive-existing", { active: false }],
+    ["customer-existing", { role: "customer" }], ["linked-existing", { linked: true }],
+    ["expired-existing", { state: "expired" }], ["revoked-existing", { state: "revoked" }],
+  ]) {
+    legacyDriver(suffix, options);
+    const userId = suffix === "wrong-existing" ? "legacy-existing-driver" : `legacy-${suffix}`;
+    assert.equal(query(inMigrationSchema(acceptExistingDriverInvitationStatement(userId, `hash-${suffix}`))), "");
+    assert.equal(query(inMigrationSchema(sql`select accepted_at is null from driver_invitations where id=${suffix}`)), "t");
+  }
+});
+
+test("simultaneous existing-driver invitations cannot join two fleets", async () => {
+  legacyDriver("existing-race");
+  query(inMigrationSchema(sql`insert into driver_invitations (id,business_id,email,token_hash,expires_at)
+    values ('existing-race-other','biz-b','existing-race@example.test','hash-existing-race-other',now()+interval '1 day')`));
+  const results = await Promise.all([
+    concurrentQuery(inMigrationSchema(acceptExistingDriverInvitationStatement("legacy-existing-race", "hash-existing-race"))),
+    concurrentQuery(inMigrationSchema(acceptExistingDriverInvitationStatement("legacy-existing-race", "hash-existing-race-other"))),
+  ]);
+  assert.equal(results.filter(Boolean).length, 1);
+  assert.equal(query(inMigrationSchema(sql`select count(*) from driver_invitations
+    where email='existing-race@example.test' and accepted_at is not null`)), "1");
+});
+
+test("existing-driver HTTP handler persists enrollment through real PostgreSQL", async () => {
+  legacyDriver("http-existing");
+  const token = "b".repeat(43);
+  query(inMigrationSchema(sql`update driver_invitations set token_hash=${hashInvitationToken(token)} where id='http-existing'`));
+  const router = createExistingDriverInvitationRouter({
+    // Identity is a controlled boundary here; production JWT validation is not mocked proof.
+    authenticate: async (c, next) => {
+      c.set("userId", "legacy-http-existing"); c.set("userRole", "driver");
+      await next();
+    },
+    accept: async (userId, secret) => {
+      const row = query(inMigrationSchema(acceptExistingDriverInvitationStatement(userId, hashInvitationToken(secret))));
+      if (!row) return undefined;
+      const [resultUserId, driverId, businessId] = row.split("|");
+      return { userId: resultUserId, driverId, businessId };
+    },
+  });
+  const request = () => router.request("/accept-existing", { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
+  assert.equal((await request()).status, 200);
+  assert.equal(query(inMigrationSchema(sql`select business_id from drivers where id='legacy-http-existing'`)), "biz-a");
+  assert.equal((await request()).status, 409);
+});
+
+test("unreconciled cross-business shipment history blocks legacy enrollment", () => {
+  const initial = readFileSync(new URL("../drizzle/0000_graceful_the_enforcers.sql", import.meta.url), "utf8");
+  const fleet = readFileSync(new URL("../drizzle/0002_private_fleets.sql", import.meta.url), "utf8");
+  const invitations = readFileSync(new URL("../drizzle/0003_driver_invitations.sql", import.meta.url), "utf8");
+  query(sql.raw(`create schema history_test; set search_path to history_test, public;
+    ${initial.replaceAll('"public".', '"history_test".')}
+    insert into users(id,email,password_hash,name,role) values
+      ('owner-a','a@test.example','test','A','business'), ('owner-b','b@test.example','test','B','business'),
+      ('legacy','legacy@test.example','test','D','driver');
+    insert into businesses(id,user_id,business_name) values ('a','owner-a','A'),('b','owner-b','B');
+    insert into drivers(id,user_id,vehicle_type,vehicle_plate) values ('legacy','legacy','bike','LEGACY');
+    insert into shipments(id,tracking_id,business_id,driver_id,description,weight_kg,pickup_address,delivery_address,price_kobo)
+      values ('historic','IST-HISTORY','b','legacy','test',1,'{}','{}',100);
+    ${fleet}
+    ${invitations}
+    insert into driver_invitations(id,business_id,email,token_hash,expires_at)
+      values ('invite','a','legacy@test.example','history-hash',now()+interval '1 day');
+  `));
+  assert.equal(query(sql`set search_path to history_test, public;
+    ${acceptExistingDriverInvitationStatement("legacy", "history-hash")}`), "");
+  assert.equal(query(sql`set search_path to history_test, public;
+    select business_id is null from drivers where id='legacy'`), "t");
+  assert.equal(query(sql`set search_path to history_test, public;
+    select accepted_at is null from driver_invitations where id='invite'`), "t");
 });
