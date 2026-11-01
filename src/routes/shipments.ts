@@ -1,3 +1,4 @@
+import { shipmentTransitions } from "@/db/queries/shipment-access";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -10,8 +11,7 @@ import {
   findShipmentsByDriver,
   findShipmentsByCustomer,
   createShipment,
-  updateShipment,
-  addShipmentEvent,
+  transitionShipment,
 } from "@/db/queries/shipments";
 import { db } from "@/db";
 import { businesses, drivers } from "@/db/schema";
@@ -23,16 +23,7 @@ import { createInAppNotification, shipmentNotificationContent } from "@/lib/noti
 
 export const shipmentsRouter = new Hono();
 
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  pending: ["assigned", "cancelled"],
-  assigned: ["picked_up", "failed", "cancelled"],
-  picked_up: ["in_transit"],
-  in_transit: ["out_for_delivery"], 
-  out_for_delivery: ["delivered", "failed"],
-  delivered: [],
-  failed: ["pending"],
-  cancelled: [],
-};
+const VALID_TRANSITIONS = shipmentTransitions;
 
 const EMAIL_MILESTONES = new Set<string>([
   "assigned",
@@ -175,13 +166,6 @@ shipmentsRouter.post(
         : null,
     });
 
-    await addShipmentEvent({
-      id: nanoid(),
-      shipmentId: shipment.id,
-      status: "pending",
-      message: "Shipment created",
-    });
-
     return c.json(
       { success: true, data: shipment, message: "Shipment created" },
       201,
@@ -222,22 +206,11 @@ shipmentsRouter.patch(
       );
     }
 
-    const timestamps: Record<string, Date> = {};
-    if (newStatus === "picked_up") timestamps.actualPickup = new Date();
-    if (newStatus === "delivered") timestamps.actualDelivery = new Date();
-
-    const updated = await updateShipment(id, {
-      status: newStatus,
-      ...timestamps,
+    const updated = await transitionShipment({ userId: c.get("userId"), role: c.get("userRole") }, {
+      shipmentId: id, expectedStatus: shipment.status, status: newStatus,
+      eventId: nanoid(), message: note ?? "",
     });
-    if (!updated) return error(c, "Failed to update shipment", 500);
-
-    await addShipmentEvent({
-      id: nanoid(),
-      shipmentId: id,
-      status: newStatus,
-      message: note ?? "",
-    });
+    if (!updated) return error(c, "Shipment changed; reload before trying again", 409);
 
     // Write in-app notification for the business owner
     const bizRow = await db
@@ -298,14 +271,11 @@ shipmentsRouter.patch(
       .limit(1);
     if (!driver) return error(c, "Driver not found", 404);
 
-    const updated = await updateShipment(id, { driverId, status: "assigned" });
-
-    await addShipmentEvent({
-      id: nanoid(),
-      shipmentId: id,
-      status: "assigned",
-      message: `Assigned to driver ${driverId}`,
+    const updated = await transitionShipment({ userId: c.get("userId"), role: c.get("userRole") }, {
+      shipmentId: id, expectedStatus: "pending", status: "assigned", driverId,
+      eventId: nanoid(), message: `Assigned to driver ${driverId}`,
     });
+    if (!updated) return error(c, "Shipment or driver changed; reload before trying again", 409);
 
     // Write in-app notification for the business owner
     const bizRowAssign = await db
@@ -359,13 +329,10 @@ shipmentsRouter.delete("/:id", requireRole("business"), async (c) => {
     );
   }
 
-  await updateShipment(shipment.id, { status: "cancelled" });
-  await addShipmentEvent({
-    id: nanoid(),
-    shipmentId: shipment.id,
-    status: "cancelled",
-    message: "Shipment cancelled by business",
+  const updated = await transitionShipment({ userId: c.get("userId"), role: c.get("userRole") }, {
+    shipmentId: shipment.id, expectedStatus: shipment.status, status: "cancelled",
+    eventId: nanoid(), message: "Shipment cancelled by business",
   });
-
+  if (!updated) return error(c, "Shipment changed; reload before trying again", 409);
   return success(c, { data: null, message: "Shipment cancelled" });
 });

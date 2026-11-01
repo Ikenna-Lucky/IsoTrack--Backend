@@ -17,7 +17,7 @@ must be established by measurement. Do not use paid services without approval.
 | Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding |
 | Sessions | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification | JWT algorithm/type/claim validation and middleware error boundaries tested; revocation, refresh reuse and recovery outstanding |
-| Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Planned |
+| Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Creation/transitions and history are atomic; status-conflict, rollback and assignment-race tests pass; durable idempotency, versioning, proof and returns outstanding |
 | Payments | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence | Existing webhook blocked by auth; release blocker |
 | Tracking | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy | Missing; release blocker |
 | Notifications | Durable dispatch, preferences enforced, bounded retries and replay, valid links | Incomplete |
@@ -166,3 +166,26 @@ environment/secret configuration and deployed behavior remain unverified. Sessio
 revocation, refresh rotation/reuse detection, issuer/audience policy, browser
 session defenses and distributed abuse controls remain release work. No migration
 or live data change was required.
+
+## Atomic shipment writes — 2026-11-02
+
+Creation, progress changes, assignment and cancellation now write shipment state
+and history in one PostgreSQL statement. Transition SQL rechecks authorization,
+expected status, action roles and active same-fleet driver assignment. A stale
+status yields no write/event and the route returns 409. Failed shipment retry
+clears prior driver/pickup/delivery state. Removed unused standalone update/event
+query helpers. Notification dispatch remains separate from the commit.
+
+Evidence: type checking and 15 fast tests passed. Final PostgreSQL run: 32 passed,
+0 failed/skipped, including a Drizzle-generated creation fragment, history-failure
+rollback, competing assignment/cancellation, denied writes without events, active
+fleet checks and retry cleanup. An earlier run exposed invalid parentheses around
+the Drizzle insert; corrected composition and reran successfully. The creation
+rollback assertion now checks the intended unique-constraint error specifically.
+
+Tests execute the production SQL statement builders through psql. Shipment HTTP
+routes, raw-response conversion and deployed Neon transport need further contract
+verification. Expected-status checks do not replace version-aware updates or
+idempotency; status cycles and post-commit notification failures remain documented
+risks in `docs/shipment-transitions.md`. No migration or live database change was
+required.

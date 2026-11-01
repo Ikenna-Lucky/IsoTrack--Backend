@@ -4,11 +4,26 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import { sql } from "drizzle-orm";
-import { pgTable, text, PgDialect } from "drizzle-orm/pg-core";
-import { shipmentAccessPredicate } from "../src/db/queries/shipment-access.ts";
+import {
+  pgTable,
+  text,
+  real,
+  integer,
+  jsonb,
+  PgDialect,
+} from "drizzle-orm/pg-core";
+import { drizzle } from "drizzle-orm/neon-http";
+import {
+  shipmentAccessPredicate,
+  shipmentTransitionStatement,
+  shipmentCreationStatement,
+} from "../src/db/queries/shipment-access.ts";
 import { fleetAccessPredicate } from "../src/db/queries/fleet-access.ts";
 import { readFileSync } from "node:fs";
-import { acceptDriverInvitationStatement, acceptExistingDriverInvitationStatement } from "../src/db/queries/accept-driver-invitation.ts";
+import {
+  acceptDriverInvitationStatement,
+  acceptExistingDriverInvitationStatement,
+} from "../src/db/queries/accept-driver-invitation.ts";
 import { createExistingDriverInvitationRouter } from "../src/routes/existing-driver-invitation.ts";
 import { hashInvitationToken } from "../src/lib/invitation-token.ts";
 import { SignJWT } from "jose";
@@ -27,7 +42,10 @@ let started = false;
 
 function docker(args, input) {
   return execFileSync("docker", args, {
-    input, encoding: "utf8", timeout: 120_000, stdio: ["pipe", "pipe", "pipe"],
+    input,
+    encoding: "utf8",
+    timeout: 120_000,
+    stdio: ["pipe", "pipe", "pipe"],
   }).trim();
 }
 
@@ -38,27 +56,54 @@ function compile(statement) {
   const text = compiled.sql.replace(/\$(\d+)/g, (_, index) => {
     const value = compiled.params[Number(index) - 1];
     if (value === null) return "NULL";
+    if (typeof value === "number") {
+      assert.ok(Number.isFinite(value));
+      return String(value);
+    }
     assert.equal(typeof value, "string");
     return `'${value.replaceAll("'", "''")}'`;
   });
   return text;
 }
 
-const psqlArgs = () => ["exec", "-i", container, "psql", "-U", "postgres", "-d", "postgres", "-qAt", "-v", "ON_ERROR_STOP=1"];
+const psqlArgs = () => [
+  "exec",
+  "-i",
+  container,
+  "psql",
+  "-U",
+  "postgres",
+  "-d",
+  "postgres",
+  "-qAt",
+  "-v",
+  "ON_ERROR_STOP=1",
+];
 
 function query(statement) {
   return docker(psqlArgs(), compile(statement));
 }
 
 async function concurrentQuery(statement) {
-  const process = promisify(execFile)("docker", psqlArgs(), { encoding: "utf8", timeout: 30_000 });
+  const process = promisify(execFile)("docker", psqlArgs(), {
+    encoding: "utf8",
+    timeout: 30_000,
+  });
   process.child.stdin.end(compile(statement));
   return (await process).stdout.trim();
 }
 
 before(async () => {
-  docker(["run", "--detach", "--rm", "--name", container,
-    "--env", "POSTGRES_PASSWORD=isolated-test-only", image]);
+  docker([
+    "run",
+    "--detach",
+    "--rm",
+    "--name",
+    container,
+    "--env",
+    "POSTGRES_PASSWORD=isolated-test-only",
+    image,
+  ]);
   started = true;
   const deadline = Date.now() + 30_000;
   while (true) {
@@ -70,7 +115,8 @@ before(async () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
-  query(sql.raw(`
+  query(
+    sql.raw(`
     create table businesses (id text primary key, user_id text not null);
     create table drivers (id text primary key, user_id text not null, business_id text);
     create table shipments (
@@ -83,7 +129,8 @@ before(async () => {
       ('shipment-a', 'biz-a', 'driver-a', 'customer-a', 'pending'),
       ('shipment-b', 'biz-b', 'driver-b', 'customer-b', 'pending'),
       ('unassigned', 'biz-b', null, null, 'pending');
-  `));
+  `),
+  );
 });
 
 after(() => {
@@ -91,20 +138,31 @@ after(() => {
 });
 
 for (const [role, userId] of [
-  ["business", "owner-a"], ["driver", "rider-a"], ["customer", "customer-a"],
+  ["business", "owner-a"],
+  ["driver", "rider-a"],
+  ["customer", "customer-a"],
 ]) {
   test(`${role} can read only its own shipment`, () => {
     const predicate = shipmentAccessPredicate(shipments, { role, userId });
-    assert.equal(query(sql`select id from ${shipments} where ${predicate}`), "shipment-a");
+    assert.equal(
+      query(sql`select id from ${shipments} where ${predicate}`),
+      "shipment-a",
+    );
   });
 
   test(`${role} cannot update a foreign shipment`, () => {
     const predicate = shipmentAccessPredicate(shipments, { role, userId });
-    assert.equal(query(sql`with changed as (
+    assert.equal(
+      query(sql`with changed as (
       update ${shipments} set status = 'cancelled'
       where id = 'shipment-b' and ${predicate} returning id
-    ) select count(*) from changed`), "0");
-    assert.equal(query(sql`select status from ${shipments} where id = 'shipment-b'`), "pending");
+    ) select count(*) from changed`),
+      "0",
+    );
+    assert.equal(
+      query(sql`select status from ${shipments} where id = 'shipment-b'`),
+      "pending",
+    );
   });
 }
 
@@ -115,31 +173,62 @@ test("unknown roles and SQL injection strings grant no access", () => {
     { role: "driver", userId: "missing" },
     { role: "customer", userId: "missing" },
   ]) {
-    assert.equal(query(sql`select count(*) from ${shipments}
-      where ${shipmentAccessPredicate(shipments, actor)}`), "0");
+    assert.equal(
+      query(sql`select count(*) from ${shipments}
+      where ${shipmentAccessPredicate(shipments, actor)}`),
+      "0",
+    );
   }
 });
 
 test("businesses discover only their own drivers and exclude unlinked accounts", () => {
   const drivers = pgTable("drivers", { businessId: text("business_id") });
-  for (const [owner, expected] of [["owner-a", "driver-a"], ["owner-b", "driver-b"], ["missing", ""]]) {
-    assert.equal(query(sql`select id from ${drivers} where ${fleetAccessPredicate(drivers.businessId, owner)}`), expected);
+  for (const [owner, expected] of [
+    ["owner-a", "driver-a"],
+    ["owner-b", "driver-b"],
+    ["missing", ""],
+  ]) {
+    assert.equal(
+      query(
+        sql`select id from ${drivers} where ${fleetAccessPredicate(drivers.businessId, owner)}`,
+      ),
+      expected,
+    );
   }
 });
 
 test("legacy or mismatched membership cannot authorize driver access", () => {
-  query(sql.raw(`insert into shipments values
+  query(
+    sql.raw(`insert into shipments values
     ('mismatch', 'biz-b', 'driver-a', null, 'pending'),
-    ('legacy-shipment', 'biz-a', 'legacy', null, 'pending')`));
-  assert.equal(query(sql`select id from ${shipments} where ${shipmentAccessPredicate(shipments, { role: "driver", userId: "rider-a" })}`), "shipment-a");
-  assert.equal(query(sql`select count(*) from ${shipments} where ${shipmentAccessPredicate(shipments, { role: "driver", userId: "legacy-rider" })}`), "0");
+    ('legacy-shipment', 'biz-a', 'legacy', null, 'pending')`),
+  );
+  assert.equal(
+    query(
+      sql`select id from ${shipments} where ${shipmentAccessPredicate(shipments, { role: "driver", userId: "rider-a" })}`,
+    ),
+    "shipment-a",
+  );
+  assert.equal(
+    query(
+      sql`select count(*) from ${shipments} where ${shipmentAccessPredicate(shipments, { role: "driver", userId: "legacy-rider" })}`,
+    ),
+    "0",
+  );
 });
 
 test("actual migrations repair skipped settings and enforce fleet assignment constraints", () => {
   // Separate schema preserves the existing ownership fixture; no application DB.
-  const initial = readFileSync(new URL("../drizzle/0000_graceful_the_enforcers.sql", import.meta.url), "utf8");
-  const fleet = readFileSync(new URL("../drizzle/0002_private_fleets.sql", import.meta.url), "utf8");
-  query(sql.raw(`create schema migration_test; set search_path to migration_test, public;
+  const initial = readFileSync(
+    new URL("../drizzle/0000_graceful_the_enforcers.sql", import.meta.url),
+    "utf8",
+  );
+  const fleet = readFileSync(
+    new URL("../drizzle/0002_private_fleets.sql", import.meta.url),
+    "utf8",
+  );
+  query(
+    sql.raw(`create schema migration_test; set search_path to migration_test, public;
     ${initial.replaceAll('"public".', '"migration_test".')}
     insert into users (id,email,password_hash,name,role) values
       ('owner-a','a@example.test','test','A','business'),
@@ -173,39 +262,82 @@ test("actual migrations repair skipped settings and enforce fleet assignment con
     select vehicle_model from drivers limit 1;
     select preferences,notification_preferences from businesses limit 1;
     alter table shipments validate constraint shipments_driver_business_fk;
-  `));
+  `),
+  );
 });
 
-const inMigrationSchema = (statement) => sql`set search_path to migration_test, public; ${statement}`;
+const inMigrationSchema = (statement) =>
+  sql`set search_path to migration_test, public; ${statement}`;
 function acceptance(suffix, overrides = {}) {
   return acceptDriverInvitationStatement({
-    tokenHash: `hash-${suffix}`, email: `${suffix}@example.test`,
-    userId: `user-${suffix}`, driverId: `driver-${suffix}`, name: "Invited Driver",
-    passwordHash: "fixture-hash", vehicleType: "bike", vehiclePlate: "TEST-123",
+    tokenHash: `hash-${suffix}`,
+    email: `${suffix}@example.test`,
+    userId: `user-${suffix}`,
+    driverId: `driver-${suffix}`,
+    name: "Invited Driver",
+    passwordHash: "fixture-hash",
+    vehicleType: "bike",
+    vehiclePlate: "TEST-123",
     ...overrides,
   });
 }
 function issue(suffix, state = "pending") {
-  query(inMigrationSchema(sql`insert into driver_invitations
+  query(
+    inMigrationSchema(sql`insert into driver_invitations
     (id,business_id,email,token_hash,created_at,expires_at,revoked_at)
     values (${suffix},'biz-a',${`${suffix}@example.test`},${`hash-${suffix}`},
       now() - interval '3 days',
       case when ${state} = 'expired' then now() - interval '1 day' else now() + interval '1 day' end,
-      case when ${state} = 'revoked' then now() else null end)`));
+      case when ${state} = 'revoked' then now() else null end)`),
+  );
 }
 
 test("invitation migration installs on the actual application schema", () => {
-  const migration = readFileSync(new URL("../drizzle/0003_driver_invitations.sql", import.meta.url), "utf8");
+  const migration = readFileSync(
+    new URL("../drizzle/0003_driver_invitations.sql", import.meta.url),
+    "utf8",
+  );
   query(inMigrationSchema(sql.raw(migration)));
 });
 
 test("acceptance creates one driver membership and replay creates nothing", () => {
   issue("valid");
-  assert.equal(query(inMigrationSchema(acceptance("valid"))), "user-valid|driver-valid|biz-a");
-  assert.equal(query(inMigrationSchema(acceptance("valid", { userId: "replayed", driverId: "replayed" }))), "");
-  assert.equal(query(inMigrationSchema(sql`select count(*) from users where email='valid@example.test'`)), "1");
-  assert.equal(query(inMigrationSchema(sql`select count(*) from drivers where user_id='user-valid' and business_id='biz-a'`)), "1");
-  assert.equal(query(inMigrationSchema(sql`select accepted_at is not null from driver_invitations where id='valid'`)), "t");
+  assert.equal(
+    query(inMigrationSchema(acceptance("valid"))),
+    "user-valid|driver-valid|biz-a",
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        acceptance("valid", { userId: "replayed", driverId: "replayed" }),
+      ),
+    ),
+    "",
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select count(*) from users where email='valid@example.test'`,
+      ),
+    ),
+    "1",
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select count(*) from drivers where user_id='user-valid' and business_id='biz-a'`,
+      ),
+    ),
+    "1",
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select accepted_at is not null from driver_invitations where id='valid'`,
+      ),
+    ),
+    "t",
+  );
 });
 
 test("expired, revoked, unknown and wrong-recipient invitations create no accounts", () => {
@@ -213,151 +345,348 @@ test("expired, revoked, unknown and wrong-recipient invitations create no accoun
   issue("revoked", "revoked");
   issue("wrong");
   for (const [suffix, overrides] of [
-    ["expired", {}], ["revoked", {}], ["unknown", {}],
+    ["expired", {}],
+    ["revoked", {}],
+    ["unknown", {}],
     ["wrong", { email: "someone-else@example.test" }],
   ]) {
     assert.equal(query(inMigrationSchema(acceptance(suffix, overrides))), "");
-    assert.equal(query(inMigrationSchema(sql`select count(*) from users where id=${`user-${suffix}`}`)), "0");
+    assert.equal(
+      query(
+        inMigrationSchema(
+          sql`select count(*) from users where id=${`user-${suffix}`}`,
+        ),
+      ),
+      "0",
+    );
   }
 });
 
 test("existing accounts are never overwritten and the invitation stays pending", () => {
   issue("existing");
-  query(inMigrationSchema(sql`insert into users(id,email,password_hash,name,role)
-    values ('existing-user','existing@example.test','original-hash','Original','customer')`));
+  query(
+    inMigrationSchema(sql`insert into users(id,email,password_hash,name,role)
+    values ('existing-user','existing@example.test','original-hash','Original','customer')`),
+  );
   assert.equal(query(inMigrationSchema(acceptance("existing"))), "");
-  assert.equal(query(inMigrationSchema(sql`select password_hash,role from users where id='existing-user'`)), "original-hash|customer");
-  assert.equal(query(inMigrationSchema(sql`select accepted_at is null from driver_invitations where id='existing'`)), "t");
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select password_hash,role from users where id='existing-user'`,
+      ),
+    ),
+    "original-hash|customer",
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select accepted_at is null from driver_invitations where id='existing'`,
+      ),
+    ),
+    "t",
+  );
 });
 
 test("a driver insert failure rolls back user creation and invitation consumption", () => {
   issue("rollback");
-  assert.throws(() => query(inMigrationSchema(acceptance("rollback", { driverId: "driver-a" }))));
-  assert.equal(query(inMigrationSchema(sql`select count(*) from users where id='user-rollback'`)), "0");
-  assert.equal(query(inMigrationSchema(sql`select accepted_at is null from driver_invitations where id='rollback'`)), "t");
+  assert.throws(() =>
+    query(inMigrationSchema(acceptance("rollback", { driverId: "driver-a" }))),
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select count(*) from users where id='user-rollback'`,
+      ),
+    ),
+    "0",
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select accepted_at is null from driver_invitations where id='rollback'`,
+      ),
+    ),
+    "t",
+  );
 });
 
 test("concurrent acceptance of one invitation succeeds exactly once", async () => {
   issue("race");
   const results = await Promise.all([
-    concurrentQuery(inMigrationSchema(acceptance("race", { userId: "race-one", driverId: "race-one" }))),
-    concurrentQuery(inMigrationSchema(acceptance("race", { userId: "race-two", driverId: "race-two" }))),
+    concurrentQuery(
+      inMigrationSchema(
+        acceptance("race", { userId: "race-one", driverId: "race-one" }),
+      ),
+    ),
+    concurrentQuery(
+      inMigrationSchema(
+        acceptance("race", { userId: "race-two", driverId: "race-two" }),
+      ),
+    ),
   ]);
   assert.equal(results.filter(Boolean).length, 1);
-  assert.equal(query(inMigrationSchema(sql`select count(*) from users where email='race@example.test'`)), "1");
-  assert.equal(query(inMigrationSchema(sql`select count(*) from drivers where user_id in ('race-one','race-two')`)), "1");
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select count(*) from users where email='race@example.test'`,
+      ),
+    ),
+    "1",
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select count(*) from drivers where user_id in ('race-one','race-two')`,
+      ),
+    ),
+    "1",
+  );
 });
 
 test("two invitations for the same email cannot create two accounts or fleets", async () => {
   issue("shared");
-  query(inMigrationSchema(sql`insert into driver_invitations (id,business_id,email,token_hash,expires_at)
-    values ('shared-other','biz-b','shared@example.test','hash-shared-other',now()+interval '1 day')`));
+  query(
+    inMigrationSchema(sql`insert into driver_invitations (id,business_id,email,token_hash,expires_at)
+    values ('shared-other','biz-b','shared@example.test','hash-shared-other',now()+interval '1 day')`),
+  );
   const results = await Promise.all([
     concurrentQuery(inMigrationSchema(acceptance("shared"))),
-    concurrentQuery(inMigrationSchema(acceptance("shared", {
-      tokenHash: "hash-shared-other", userId: "shared-other-user", driverId: "shared-other-driver",
-    }))),
+    concurrentQuery(
+      inMigrationSchema(
+        acceptance("shared", {
+          tokenHash: "hash-shared-other",
+          userId: "shared-other-user",
+          driverId: "shared-other-driver",
+        }),
+      ),
+    ),
   ]);
   assert.equal(results.filter(Boolean).length, 1);
-  assert.equal(query(inMigrationSchema(sql`select count(*) from users where email='shared@example.test'`)), "1");
-  assert.equal(query(inMigrationSchema(sql`select count(*) from driver_invitations
-    where email='shared@example.test' and accepted_at is not null`)), "1");
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select count(*) from users where email='shared@example.test'`,
+      ),
+    ),
+    "1",
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(sql`select count(*) from driver_invitations
+    where email='shared@example.test' and accepted_at is not null`),
+    ),
+    "1",
+  );
 });
 
 test("revocation competing with acceptance leaves exactly one terminal state", async () => {
   issue("revoke-race");
   await Promise.all([
     concurrentQuery(inMigrationSchema(acceptance("revoke-race"))),
-    concurrentQuery(inMigrationSchema(sql`update driver_invitations set revoked_at=now()
-      where id='revoke-race' and accepted_at is null and revoked_at is null returning id`)),
+    concurrentQuery(
+      inMigrationSchema(sql`update driver_invitations set revoked_at=now()
+      where id='revoke-race' and accepted_at is null and revoked_at is null returning id`),
+    ),
   ]);
-  const state = query(inMigrationSchema(sql`select accepted_at is not null,revoked_at is not null
-    from driver_invitations where id='revoke-race'`));
+  const state = query(
+    inMigrationSchema(sql`select accepted_at is not null,revoked_at is not null
+    from driver_invitations where id='revoke-race'`),
+  );
   assert.ok(state === "t|f" || state === "f|t", state);
-  assert.equal(query(inMigrationSchema(sql`select count(*) from users where email='revoke-race@example.test'`)), state === "t|f" ? "1" : "0");
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select count(*) from users where email='revoke-race@example.test'`,
+      ),
+    ),
+    state === "t|f" ? "1" : "0",
+  );
 });
 
 function legacyDriver(suffix, options = {}) {
   issue(suffix, options.state ?? "pending");
-  query(inMigrationSchema(sql`insert into users(id,email,password_hash,name,role,is_active)
+  query(
+    inMigrationSchema(sql`insert into users(id,email,password_hash,name,role,is_active)
     values (${`legacy-${suffix}`},${`${suffix}@example.test`},'unchanged','Existing',
       ${options.role ?? "driver"}::user_role, ${options.active === false ? "false" : "true"}::boolean);
     insert into drivers(id,user_id,vehicle_type,vehicle_plate,business_id)
-    values (${`legacy-${suffix}`},${`legacy-${suffix}`},'bike','LEGACY',${options.linked ? "biz-b" : null})`));
+    values (${`legacy-${suffix}`},${`legacy-${suffix}`},'bike','LEGACY',${options.linked ? "biz-b" : null})`),
+  );
 }
 
 test("existing unlinked driver joins without changing credentials and cannot replay", () => {
   legacyDriver("existing-driver");
-  const statement = acceptExistingDriverInvitationStatement("legacy-existing-driver", "hash-existing-driver");
-  assert.equal(query(inMigrationSchema(statement)), "legacy-existing-driver|legacy-existing-driver|biz-a");
+  const statement = acceptExistingDriverInvitationStatement(
+    "legacy-existing-driver",
+    "hash-existing-driver",
+  );
+  assert.equal(
+    query(inMigrationSchema(statement)),
+    "legacy-existing-driver|legacy-existing-driver|biz-a",
+  );
   assert.equal(query(inMigrationSchema(statement)), "");
-  assert.equal(query(inMigrationSchema(sql`select password_hash from users where id='legacy-existing-driver'`)), "unchanged");
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select password_hash from users where id='legacy-existing-driver'`,
+      ),
+    ),
+    "unchanged",
+  );
 });
 
 test("existing enrollment rejects wrong identity, inactive accounts, wrong roles and unavailable invitations", () => {
   for (const [suffix, options] of [
-    ["wrong-existing", {}], ["inactive-existing", { active: false }],
-    ["customer-existing", { role: "customer" }], ["linked-existing", { linked: true }],
-    ["expired-existing", { state: "expired" }], ["revoked-existing", { state: "revoked" }],
+    ["wrong-existing", {}],
+    ["inactive-existing", { active: false }],
+    ["customer-existing", { role: "customer" }],
+    ["linked-existing", { linked: true }],
+    ["expired-existing", { state: "expired" }],
+    ["revoked-existing", { state: "revoked" }],
   ]) {
     legacyDriver(suffix, options);
-    const userId = suffix === "wrong-existing" ? "legacy-existing-driver" : `legacy-${suffix}`;
-    assert.equal(query(inMigrationSchema(acceptExistingDriverInvitationStatement(userId, `hash-${suffix}`))), "");
-    assert.equal(query(inMigrationSchema(sql`select accepted_at is null from driver_invitations where id=${suffix}`)), "t");
+    const userId =
+      suffix === "wrong-existing"
+        ? "legacy-existing-driver"
+        : `legacy-${suffix}`;
+    assert.equal(
+      query(
+        inMigrationSchema(
+          acceptExistingDriverInvitationStatement(userId, `hash-${suffix}`),
+        ),
+      ),
+      "",
+    );
+    assert.equal(
+      query(
+        inMigrationSchema(
+          sql`select accepted_at is null from driver_invitations where id=${suffix}`,
+        ),
+      ),
+      "t",
+    );
   }
 });
 
 test("simultaneous existing-driver invitations cannot join two fleets", async () => {
   legacyDriver("existing-race");
-  query(inMigrationSchema(sql`insert into driver_invitations (id,business_id,email,token_hash,expires_at)
-    values ('existing-race-other','biz-b','existing-race@example.test','hash-existing-race-other',now()+interval '1 day')`));
+  query(
+    inMigrationSchema(sql`insert into driver_invitations (id,business_id,email,token_hash,expires_at)
+    values ('existing-race-other','biz-b','existing-race@example.test','hash-existing-race-other',now()+interval '1 day')`),
+  );
   const results = await Promise.all([
-    concurrentQuery(inMigrationSchema(acceptExistingDriverInvitationStatement("legacy-existing-race", "hash-existing-race"))),
-    concurrentQuery(inMigrationSchema(acceptExistingDriverInvitationStatement("legacy-existing-race", "hash-existing-race-other"))),
+    concurrentQuery(
+      inMigrationSchema(
+        acceptExistingDriverInvitationStatement(
+          "legacy-existing-race",
+          "hash-existing-race",
+        ),
+      ),
+    ),
+    concurrentQuery(
+      inMigrationSchema(
+        acceptExistingDriverInvitationStatement(
+          "legacy-existing-race",
+          "hash-existing-race-other",
+        ),
+      ),
+    ),
   ]);
   assert.equal(results.filter(Boolean).length, 1);
-  assert.equal(query(inMigrationSchema(sql`select count(*) from driver_invitations
-    where email='existing-race@example.test' and accepted_at is not null`)), "1");
+  assert.equal(
+    query(
+      inMigrationSchema(sql`select count(*) from driver_invitations
+    where email='existing-race@example.test' and accepted_at is not null`),
+    ),
+    "1",
+  );
 });
 
 test("existing-driver HTTP handler persists enrollment through real PostgreSQL", async () => {
   legacyDriver("http-existing");
   const token = "b".repeat(43);
-  const signingKey = new TextEncoder().encode("isolated-integration-signing-key-32-characters");
+  const signingKey = new TextEncoder().encode(
+    "isolated-integration-signing-key-32-characters",
+  );
   const accessToken = await new SignJWT({ type: "access", role: "driver" })
-    .setProtectedHeader({ alg: "HS256" }).setSubject("legacy-http-existing")
-    .setIssuedAt().setExpirationTime("5m").sign(signingKey);
-  query(inMigrationSchema(sql`update driver_invitations set token_hash=${hashInvitationToken(token)} where id='http-existing'`));
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject("legacy-http-existing")
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(signingKey);
+  query(
+    inMigrationSchema(
+      sql`update driver_invitations set token_hash=${hashInvitationToken(token)} where id='http-existing'`,
+    ),
+  );
   const router = createExistingDriverInvitationRouter({
     authenticate: createAuthenticationMiddleware({
       verifyToken: (value) => verifySessionToken(value, signingKey, "access"),
       findUser: async (id) => {
-        const row = query(inMigrationSchema(sql`select id,role,is_active from users where id=${id}`));
+        const row = query(
+          inMigrationSchema(
+            sql`select id,role,is_active from users where id=${id}`,
+          ),
+        );
         if (!row) return null;
         const [userId, role, active] = row.split("|");
         return { id: userId, role, isActive: active === "t" };
       },
     }),
     accept: async (userId, secret) => {
-      const row = query(inMigrationSchema(acceptExistingDriverInvitationStatement(userId, hashInvitationToken(secret))));
+      const row = query(
+        inMigrationSchema(
+          acceptExistingDriverInvitationStatement(
+            userId,
+            hashInvitationToken(secret),
+          ),
+        ),
+      );
       if (!row) return undefined;
       const [resultUserId, driverId, businessId] = row.split("|");
       return { userId: resultUserId, driverId, businessId };
     },
   });
-  const request = () => router.request("/accept-existing", { method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ token }) });
-  assert.equal((await router.request("/accept-existing", { method: "POST" })).status, 401);
+  const request = () =>
+    router.request("/accept-existing", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ token }),
+    });
+  assert.equal(
+    (await router.request("/accept-existing", { method: "POST" })).status,
+    401,
+  );
   assert.equal((await request()).status, 200);
-  assert.equal(query(inMigrationSchema(sql`select business_id from drivers where id='legacy-http-existing'`)), "biz-a");
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select business_id from drivers where id='legacy-http-existing'`,
+      ),
+    ),
+    "biz-a",
+  );
   assert.equal((await request()).status, 409);
 });
 
 test("unreconciled cross-business shipment history blocks legacy enrollment", () => {
-  const initial = readFileSync(new URL("../drizzle/0000_graceful_the_enforcers.sql", import.meta.url), "utf8");
-  const fleet = readFileSync(new URL("../drizzle/0002_private_fleets.sql", import.meta.url), "utf8");
-  const invitations = readFileSync(new URL("../drizzle/0003_driver_invitations.sql", import.meta.url), "utf8");
-  query(sql.raw(`create schema history_test; set search_path to history_test, public;
+  const initial = readFileSync(
+    new URL("../drizzle/0000_graceful_the_enforcers.sql", import.meta.url),
+    "utf8",
+  );
+  const fleet = readFileSync(
+    new URL("../drizzle/0002_private_fleets.sql", import.meta.url),
+    "utf8",
+  );
+  const invitations = readFileSync(
+    new URL("../drizzle/0003_driver_invitations.sql", import.meta.url),
+    "utf8",
+  );
+  query(
+    sql.raw(`create schema history_test; set search_path to history_test, public;
     ${initial.replaceAll('"public".', '"history_test".')}
     insert into users(id,email,password_hash,name,role) values
       ('owner-a','a@test.example','test','A','business'), ('owner-b','b@test.example','test','B','business'),
@@ -370,11 +699,270 @@ test("unreconciled cross-business shipment history blocks legacy enrollment", ()
     ${invitations}
     insert into driver_invitations(id,business_id,email,token_hash,expires_at)
       values ('invite','a','legacy@test.example','history-hash',now()+interval '1 day');
-  `));
-  assert.equal(query(sql`set search_path to history_test, public;
-    ${acceptExistingDriverInvitationStatement("legacy", "history-hash")}`), "");
-  assert.equal(query(sql`set search_path to history_test, public;
-    select business_id is null from drivers where id='legacy'`), "t");
-  assert.equal(query(sql`set search_path to history_test, public;
-    select accepted_at is null from driver_invitations where id='invite'`), "t");
+  `),
+  );
+  assert.equal(
+    query(sql`set search_path to history_test, public;
+    ${acceptExistingDriverInvitationStatement("legacy", "history-hash")}`),
+    "",
+  );
+  assert.equal(
+    query(sql`set search_path to history_test, public;
+    select business_id is null from drivers where id='legacy'`),
+    "t",
+  );
+  assert.equal(
+    query(sql`set search_path to history_test, public;
+    select accepted_at is null from driver_invitations where id='invite'`),
+    "t",
+  );
+});
+
+function shipmentFixture(id, status = "pending") {
+  query(
+    inMigrationSchema(sql`insert into shipments
+    (id,tracking_id,business_id,driver_id,description,weight_kg,pickup_address,delivery_address,price_kobo,status)
+    values (${id},${`IST-${id}`},'biz-a',${status === "pending" ? null : "driver-a"},
+      'fixture',1,'{}','{}',100,${status}::shipment_status)`),
+  );
+}
+function transition(id, expectedStatus, status, options = {}) {
+  const { actor = { userId: "owner-a", role: "business" }, ...overrides } =
+    options;
+  return inMigrationSchema(
+    shipmentTransitionStatement(shipments, actor, {
+      shipmentId: id,
+      expectedStatus,
+      status,
+      eventId: `event-${id}`,
+      message: "Status changed",
+      ...overrides,
+    }),
+  );
+}
+
+test("shipment status, pickup time and history commit together", () => {
+  shipmentFixture("atomic-pickup", "assigned");
+  assert.ok(query(transition("atomic-pickup", "assigned", "picked_up")));
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select status,actual_pickup is not null from shipments where id='atomic-pickup'`,
+      ),
+    ),
+    "picked_up|t",
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select status from shipment_events where shipment_id='atomic-pickup'`,
+      ),
+    ),
+    "picked_up",
+  );
+});
+
+test("history insertion failure rolls back shipment status and timestamp", () => {
+  shipmentFixture("atomic-rollback", "assigned");
+  query(
+    inMigrationSchema(sql`insert into shipment_events(id,shipment_id,status,message)
+    values ('event-atomic-rollback','atomic-rollback','assigned','Existing event')`),
+  );
+  assert.throws(() =>
+    query(transition("atomic-rollback", "assigned", "picked_up")),
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select status,actual_pickup is null from shipments where id='atomic-rollback'`,
+      ),
+    ),
+    "assigned|t",
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select count(*) from shipment_events where shipment_id='atomic-rollback'`,
+      ),
+    ),
+    "1",
+  );
+});
+
+test("competing assignment and cancellation produce one change and one event", async () => {
+  shipmentFixture("atomic-race");
+  const results = await Promise.all([
+    concurrentQuery(
+      transition("atomic-race", "pending", "assigned", {
+        driverId: "driver-a",
+        eventId: "race-assigned",
+      }),
+    ),
+    concurrentQuery(
+      transition("atomic-race", "pending", "cancelled", {
+        eventId: "race-cancelled",
+      }),
+    ),
+  ]);
+  assert.equal(results.filter(Boolean).length, 1);
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select count(*) from shipment_events where shipment_id='atomic-race'`,
+      ),
+    ),
+    "1",
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(sql`select s.status=e.status from shipments s
+    join shipment_events e on e.shipment_id=s.id where s.id='atomic-race'`),
+    ),
+    "t",
+  );
+});
+
+test("foreign businesses and unauthorized driver actions write no history", () => {
+  shipmentFixture("atomic-denied", "assigned");
+  for (const options of [
+    { actor: { userId: "owner-b", role: "business" } },
+    { actor: { userId: "rider-a", role: "driver" } },
+    { actor: { userId: "existing-user", role: "customer" } },
+  ]) {
+    assert.equal(
+      query(transition("atomic-denied", "assigned", "cancelled", options)),
+      "",
+    );
+  }
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select status from shipments where id='atomic-denied'`,
+      ),
+    ),
+    "assigned",
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select count(*) from shipment_events where shipment_id='atomic-denied'`,
+      ),
+    ),
+    "0",
+  );
+});
+
+test("assigned driver may update delivery progress", () => {
+  shipmentFixture("atomic-driver", "assigned");
+  assert.ok(
+    query(
+      transition("atomic-driver", "assigned", "picked_up", {
+        actor: { userId: "rider-a", role: "driver" },
+      }),
+    ),
+  );
+});
+
+test("assignment requires an active driver from the shipment business", () => {
+  shipmentFixture("atomic-fleet");
+  query(
+    inMigrationSchema(
+      sql`update drivers set business_id='biz-a' where id='legacy-inactive-existing'`,
+    ),
+  );
+  for (const driverId of [
+    "missing",
+    "legacy-linked-existing",
+    "legacy-inactive-existing",
+  ]) {
+    assert.equal(
+      query(transition("atomic-fleet", "pending", "assigned", { driverId })),
+      "",
+    );
+  }
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select count(*) from shipment_events where shipment_id='atomic-fleet'`,
+      ),
+    ),
+    "0",
+  );
+});
+
+test("retry clears prior assignment and delivery timestamps atomically", () => {
+  shipmentFixture("atomic-retry", "failed");
+  query(
+    inMigrationSchema(
+      sql`update shipments set actual_pickup=now(),actual_delivery=now() where id='atomic-retry'`,
+    ),
+  );
+  assert.ok(query(transition("atomic-retry", "failed", "pending")));
+  assert.equal(
+    query(
+      inMigrationSchema(sql`select driver_id is null,actual_pickup is null,actual_delivery is null
+    from shipments where id='atomic-retry'`),
+    ),
+    "t|t|t",
+  );
+});
+
+function creation(id, eventId) {
+  const table = pgTable("shipments", {
+    id: text("id"),
+    trackingId: text("tracking_id"),
+    businessId: text("business_id"),
+    description: text("description"),
+    weightKg: real("weight_kg"),
+    status: text("status"),
+    pickupAddress: jsonb("pickup_address"),
+    deliveryAddress: jsonb("delivery_address"),
+    priceKobo: integer("price_kobo"),
+  });
+  // Build the real Drizzle insert fragment; execute through the isolated psql
+  // adapter rather than invoking a remote Neon HTTP connection.
+  const database = drizzle(() => {
+    throw new Error("Unexpected HTTP execution");
+  });
+  const insert = database
+    .insert(table)
+    .values({
+      id,
+      trackingId: `IST-${id}`,
+      businessId: "biz-a",
+      description: "fixture",
+      weightKg: 1,
+      pickupAddress: {},
+      deliveryAddress: {},
+      priceKobo: 100,
+    })
+    .returning();
+  return inMigrationSchema(shipmentCreationStatement(insert, eventId));
+}
+test("shipment creation and initial history commit together", () => {
+  assert.ok(query(creation("atomic-create", "event-atomic-create")));
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select status,message from shipment_events where shipment_id='atomic-create'`,
+      ),
+    ),
+    "pending|Shipment created",
+  );
+});
+
+test("failed initial history rolls back shipment creation", () => {
+  assert.throws(
+    () => query(creation("atomic-create-rollback", "event-atomic-create")),
+    (error) =>
+      error.stderr.includes("duplicate key value violates unique constraint"),
+  );
+  assert.equal(
+    query(
+      inMigrationSchema(
+        sql`select count(*) from shipments where id='atomic-create-rollback'`,
+      ),
+    ),
+    "0",
+  );
 });

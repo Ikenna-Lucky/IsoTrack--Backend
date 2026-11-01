@@ -1,9 +1,10 @@
 import { shipmentContactColumns } from "@/db/queries/user-columns";
-import { shipmentAccessPredicate, type ShipmentActor } from "./shipment-access";
+import { shipmentAccessPredicate, shipmentTransitionStatement, shipmentCreationStatement, type ShipmentActor, type ShipmentTransition } from "./shipment-access";
+import { nanoid } from "nanoid";
 import { eq, and, desc, count, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { shipments, shipmentEvents, drivers } from "@/db/schema";
-import type { NewShipment, Shipment, NewShipmentEvent } from "@/db/schema";
+import type { NewShipment, Shipment } from "@/db/schema";
 
 // ─── Read ──────────────────────────────────────────────────────────────────────
 
@@ -103,28 +104,31 @@ export async function findShipmentsByCustomer(customerId: string) {
 
 // ─── Write ─────────────────────────────────────────────────────────────────────
 
+export async function transitionShipment(actor: ShipmentActor, change: ShipmentTransition): Promise<Shipment | null> {
+  const result = await db.execute(shipmentTransitionStatement(shipments, actor, change));
+  const row = result.rows[0]?.shipment as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return shipmentFromDatabaseJson(row);
+}
+
+function shipmentFromDatabaseJson(row: Record<string, unknown>): Shipment {
+  // Raw SQL returns database column names; preserve the existing API row shape.
+  const mapped = Object.fromEntries(Object.entries(row).map(([key, value]) => [
+    key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()), value,
+  ]));
+  for (const key of ["scheduledPickup", "actualPickup", "estimatedDelivery", "actualDelivery", "createdAt", "updatedAt"]) {
+    if (typeof mapped[key] === "string") mapped[key] = new Date(mapped[key] as string);
+  }
+  return mapped as unknown as Shipment;
+}
+
 export async function createShipment(data: NewShipment): Promise<Shipment> {
-  const [shipment] = await db.insert(shipments).values(data).returning();
-  if (!shipment) throw new Error("Failed to create shipment");
-  return shipment;
-}
-
-export async function updateShipment(
-  id: string,
-  data: Partial<Shipment>,
-): Promise<Shipment | null> {
-  const [shipment] = await db
-    .update(shipments)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(shipments.id, id))
-    .returning();
-  return shipment ?? null;
-}
-
-export async function addShipmentEvent(data: NewShipmentEvent) {
-  const [event] = await db.insert(shipmentEvents).values(data).returning();
-  if (!event) throw new Error("Failed to create shipment event");
-  return event;
+  const result = await db.execute(shipmentCreationStatement(
+    db.insert(shipments).values(data).returning(), nanoid(),
+  ));
+  const row = result.rows[0]?.shipment as Record<string, unknown> | undefined;
+  if (!row) throw new Error("Failed to create shipment");
+  return shipmentFromDatabaseJson(row);
 }
 
 // ─── Analytics ─────────────────────────────────────────────────────────────────
