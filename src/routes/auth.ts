@@ -243,7 +243,7 @@ authRouter.post("/refresh", async (c) => {
 
 authRouter.post("/logout", (c) => {
   clearRefreshCookie(c);
-  return success(c, { message: "Logged out successfully" });
+  return success(c, { data: null, message: "Logged out successfully" });
 });
 
 // ─── PATCH /auth/me ───────────────────────────────────────────────────────────
@@ -285,7 +285,7 @@ authRouter.delete("/me", authenticate, async (c) => {
   await db.delete(users).where(eq(users.id, userId));
 
   clearRefreshCookie(c);
-  return success(c, { message: "Account permanently deleted" });
+  return success(c, { data: null, message: "Account permanently deleted" });
 });
 
 // ─── PATCH /auth/password ─────────────────────────────────────────────────────
@@ -317,5 +317,5 @@ authRouter.patch("/password", authenticate, zValidator("json", changePasswordSch
   await db.update(users).set({ passwordHash: newHash, updatedAt: new Date() })
     .where(eq(users.id, userId));
 
-  return success(c, { message: "Password changed successfully" });
+  return success(c, { data: null, message: "Password changed successfully" });
 });

@@ -2,11 +2,13 @@
   "name": "isotrack-backend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "type-check": "tsc --noEmit",
+    "test:unit": "node --test tests/*.test.mjs",
     "lint": "eslint src --ext .ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run src/db/migrate.ts",

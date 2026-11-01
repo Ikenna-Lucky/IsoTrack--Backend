@@ -1,0 +1,43 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main, isoTrack-dev-branch]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.12.0'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.1'
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Check types
+        run: bun run type-check
+      - name: Unit tests
+        run: node --test --test-reporter=junit --test-reporter-destination=unit-results.xml tests/*.test.mjs
+      - name: Build
+        run: bun run build
+      - name: Retain test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-results
+          path: unit-results.xml
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,3 +1,4 @@
+import { shipmentContactColumns } from "@/db/queries/user-columns";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -102,7 +103,7 @@ businessRouter.get("/analytics", async (c) => {
 
   const recentShipments = await db.query.shipments.findMany({
     where: eq(shipments.businessId, biz.id),
-    with: { driver: { with: { user: true } }, customer: true },
+    with: { driver: { with: { user: { columns: shipmentContactColumns } } }, customer: { columns: shipmentContactColumns } },
     orderBy: desc(shipments.createdAt),
     limit: 10,
   });

@@ -1,3 +1,4 @@
+import { shipmentContactColumns } from "@/db/queries/user-columns";
 import { eq, and, desc, count, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { shipments, shipmentEvents } from "@/db/schema";
@@ -9,8 +10,8 @@ export async function findShipmentById(id: string) {
   return db.query.shipments.findFirst({
     where: eq(shipments.id, id),
     with: {
-      driver: { with: { user: true } },
-      customer: true,
+      driver: { with: { user: { columns: shipmentContactColumns } } },
+      customer: { columns: shipmentContactColumns },
       events: { orderBy: desc(shipmentEvents.createdAt) },
       payment: true,
     },
@@ -21,7 +22,7 @@ export async function findShipmentByTrackingId(trackingId: string) {
   return db.query.shipments.findFirst({
     where: eq(shipments.trackingId, trackingId.toUpperCase()),
     with: {
-      driver: { with: { user: true } },
+      driver: { with: { user: { columns: shipmentContactColumns } } },
       events: { orderBy: desc(shipmentEvents.createdAt) },
     },
   });
@@ -39,8 +40,8 @@ export async function findShipmentsByBusiness(
     db.query.shipments.findMany({
       where: eq(shipments.businessId, businessId),
       with: {
-        driver: { with: { user: true } },
-        customer: true,
+        driver: { with: { user: { columns: shipmentContactColumns } } },
+        customer: { columns: shipmentContactColumns },
       },
       orderBy: desc(shipments.createdAt),
       limit: pageSize,
@@ -75,7 +76,7 @@ export async function findShipmentsByDriver(
           sql`${shipments.status} NOT IN ('delivered', 'failed', 'cancelled')`,
         ),
     with: {
-      customer: true,
+      customer: { columns: shipmentContactColumns },
       events: { orderBy: desc(shipmentEvents.createdAt), limit: 1 },
     },
     orderBy: desc(shipments.updatedAt),
@@ -86,7 +87,7 @@ export async function findShipmentsByCustomer(customerId: string) {
   return db.query.shipments.findMany({
     where: eq(shipments.customerId, customerId),
     with: {
-      driver: { with: { user: true } },
+      driver: { with: { user: { columns: shipmentContactColumns } } },
       events: { orderBy: desc(shipmentEvents.createdAt), limit: 3 },
     },
     orderBy: desc(shipments.createdAt),
