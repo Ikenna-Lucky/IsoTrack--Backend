@@ -11,6 +11,9 @@ import { readFileSync } from "node:fs";
 import { acceptDriverInvitationStatement, acceptExistingDriverInvitationStatement } from "../src/db/queries/accept-driver-invitation.ts";
 import { createExistingDriverInvitationRouter } from "../src/routes/existing-driver-invitation.ts";
 import { hashInvitationToken } from "../src/lib/invitation-token.ts";
+import { SignJWT } from "jose";
+import { createAuthenticationMiddleware } from "../src/middleware/authentication.ts";
+import { verifySessionToken } from "../src/lib/token-verification.ts";
 
 const container = `isotrack-access-test-${randomUUID()}`;
 const image = "postgres:17-alpine";
@@ -320,13 +323,21 @@ test("simultaneous existing-driver invitations cannot join two fleets", async ()
 test("existing-driver HTTP handler persists enrollment through real PostgreSQL", async () => {
   legacyDriver("http-existing");
   const token = "b".repeat(43);
+  const signingKey = new TextEncoder().encode("isolated-integration-signing-key-32-characters");
+  const accessToken = await new SignJWT({ type: "access", role: "driver" })
+    .setProtectedHeader({ alg: "HS256" }).setSubject("legacy-http-existing")
+    .setIssuedAt().setExpirationTime("5m").sign(signingKey);
   query(inMigrationSchema(sql`update driver_invitations set token_hash=${hashInvitationToken(token)} where id='http-existing'`));
   const router = createExistingDriverInvitationRouter({
-    // Identity is a controlled boundary here; production JWT validation is not mocked proof.
-    authenticate: async (c, next) => {
-      c.set("userId", "legacy-http-existing"); c.set("userRole", "driver");
-      await next();
-    },
+    authenticate: createAuthenticationMiddleware({
+      verifyToken: (value) => verifySessionToken(value, signingKey, "access"),
+      findUser: async (id) => {
+        const row = query(inMigrationSchema(sql`select id,role,is_active from users where id=${id}`));
+        if (!row) return null;
+        const [userId, role, active] = row.split("|");
+        return { id: userId, role, isActive: active === "t" };
+      },
+    }),
     accept: async (userId, secret) => {
       const row = query(inMigrationSchema(acceptExistingDriverInvitationStatement(userId, hashInvitationToken(secret))));
       if (!row) return undefined;
@@ -335,7 +346,8 @@ test("existing-driver HTTP handler persists enrollment through real PostgreSQL",
     },
   });
   const request = () => router.request("/accept-existing", { method: "POST",
-    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ token }) });
+  assert.equal((await router.request("/accept-existing", { method: "POST" })).status, 401);
   assert.equal((await request()).status, 200);
   assert.equal(query(inMigrationSchema(sql`select business_id from drivers where id='legacy-http-existing'`)), "biz-a");
   assert.equal((await request()).status, 409);

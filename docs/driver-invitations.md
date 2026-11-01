@@ -66,6 +66,8 @@ verification, legacy data reconciliation and operational telemetry are complete.
 integration suite proves database invariants, not end-to-end routing, deployed
 provider compatibility or delivered emails. Apply migration `0003` before using
 the new endpoints. No live application database was migrated during development.
-HTTP handler tests use controlled identities and do not establish JWT validation.
-An existing-driver handler integration test executes the production SQL statement
-against PostgreSQL and verifies durable membership and replay rejection.
+Fast handler tests use controlled identities. The existing-driver integration test
+uses the production authentication middleware, real signed JWT verification and
+a PostgreSQL user lookup, then executes enrollment SQL and verifies persistence
+and replay rejection. The deployed Neon transport and full parent routing remain
+separate verification requirements.

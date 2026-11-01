@@ -16,7 +16,7 @@ must be established by measurement. Do not use paid services without approval.
 | Response privacy | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles | Query projection implemented; integration unverified |
 | Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding |
-| Sessions | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification | Planned |
+| Sessions | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification | JWT algorithm/type/claim validation and middleware error boundaries tested; revocation, refresh reuse and recovery outstanding |
 | Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Planned |
 | Payments | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence | Existing webhook blocked by auth; release blocker |
 | Tracking | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy | Missing; release blocker |
@@ -144,3 +144,25 @@ Evidence on Node 24.12.0 / disposable PostgreSQL 17:
 HTTP tests inject controlled identities. Production JWT verification, the parent
 router wiring, deployed Neon transport and remote CI are not established by these
 results. No migration is needed for this batch and no live data was changed.
+
+## Authentication validation — 2026-11-02
+
+Production authentication now uses shared access-token verification and a tested
+middleware factory. Access and refresh tokens must use HS256 and contain subject,
+issued-at and expiry claims with the correct token type. Access roles must be
+known strings. Current identity, active state and role are loaded from the user
+store rather than granting permissions from stale token roles. User-store and
+handler failures remain server failures; only verification failures become 401.
+
+Evidence: type checking passed; 15 fast tests and 23 PostgreSQL integration tests
+passed, with 0 failures/skips. Fast tests use real jose signatures for expiry,
+claim omissions, invalid roles/types, wrong algorithms/signatures, inactive or
+deleted accounts, current roles, and error classification. The enrollment HTTP
+integration uses the production middleware factory and token verifier with a real
+PostgreSQL user lookup, then verifies durable enrollment and replay rejection.
+
+The test adapter uses psql, not the deployed Neon transport. Full parent router,
+environment/secret configuration and deployed behavior remain unverified. Session
+revocation, refresh rotation/reuse detection, issuer/audience policy, browser
+session defenses and distributed abuse controls remain release work. No migration
+or live data change was required.

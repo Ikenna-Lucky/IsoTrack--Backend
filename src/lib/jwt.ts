@@ -1,4 +1,5 @@
-import { SignJWT, jwtVerify, type JWTPayload } from "jose";
+import { verifySessionToken } from "./token-verification";
+import { SignJWT, type JWTPayload } from "jose";
 import { env } from "@/lib/env";
 import type { UserRole } from "@/types";
 
@@ -77,27 +78,13 @@ export async function createRefreshToken(userId: string): Promise<string> {
 export async function verifyAccessToken(
   token: string,
 ): Promise<AccessTokenPayload> {
-  const { payload } = await jwtVerify<AccessTokenPayload>(
-    token,
-    accessSecret(),
-  );
-  if (payload.type !== "access") {
-    throw new Error("Invalid token type");
-  }
-  return payload;
+  return await verifySessionToken(token, accessSecret(), "access") as AccessTokenPayload;
 }
 
 export async function verifyRefreshToken(
   token: string,
 ): Promise<RefreshTokenPayload> {
-  const { payload } = await jwtVerify<RefreshTokenPayload>(
-    token,
-    refreshSecret(),
-  );
-  if (payload.type !== "refresh") {
-    throw new Error("Invalid token type");
-  }
-  return payload;
+  return await verifySessionToken(token, refreshSecret(), "refresh") as RefreshTokenPayload;
 }
 
 // ─── Cookie max-age ───────────────────────────────────────────────────────────
