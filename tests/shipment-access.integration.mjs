@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import { sql } from "drizzle-orm";
@@ -7,6 +8,7 @@ import { pgTable, text, PgDialect } from "drizzle-orm/pg-core";
 import { shipmentAccessPredicate } from "../src/db/queries/shipment-access.ts";
 import { fleetAccessPredicate } from "../src/db/queries/fleet-access.ts";
 import { readFileSync } from "node:fs";
+import { acceptDriverInvitationStatement } from "../src/db/queries/accept-driver-invitation.ts";
 
 const container = `isotrack-access-test-${randomUUID()}`;
 const image = "postgres:17-alpine";
@@ -24,7 +26,7 @@ function docker(args, input) {
   }).trim();
 }
 
-function query(statement) {
+function compile(statement) {
   const compiled = dialect.sqlToQuery(statement);
   // Only generated fixture strings are inlined for psql; application queries
   // continue to use driver-bound parameters.
@@ -33,7 +35,19 @@ function query(statement) {
     assert.equal(typeof value, "string");
     return `'${value.replaceAll("'", "''")}'`;
   });
-  return docker(["exec", "-i", container, "psql", "-U", "postgres", "-d", "postgres", "-At", "-v", "ON_ERROR_STOP=1"], text);
+  return text;
+}
+
+const psqlArgs = () => ["exec", "-i", container, "psql", "-U", "postgres", "-d", "postgres", "-qAt", "-v", "ON_ERROR_STOP=1"];
+
+function query(statement) {
+  return docker(psqlArgs(), compile(statement));
+}
+
+async function concurrentQuery(statement) {
+  const process = promisify(execFile)("docker", psqlArgs(), { encoding: "utf8", timeout: 30_000 });
+  process.child.stdin.end(compile(statement));
+  return (await process).stdout.trim();
 }
 
 before(async () => {
@@ -154,4 +168,105 @@ test("actual migrations repair skipped settings and enforce fleet assignment con
     select preferences,notification_preferences from businesses limit 1;
     alter table shipments validate constraint shipments_driver_business_fk;
   `));
+});
+
+const inMigrationSchema = (statement) => sql`set search_path to migration_test, public; ${statement}`;
+function acceptance(suffix, overrides = {}) {
+  return acceptDriverInvitationStatement({
+    tokenHash: `hash-${suffix}`, email: `${suffix}@example.test`,
+    userId: `user-${suffix}`, driverId: `driver-${suffix}`, name: "Invited Driver",
+    passwordHash: "fixture-hash", vehicleType: "bike", vehiclePlate: "TEST-123",
+    ...overrides,
+  });
+}
+function issue(suffix, state = "pending") {
+  query(inMigrationSchema(sql`insert into driver_invitations
+    (id,business_id,email,token_hash,created_at,expires_at,revoked_at)
+    values (${suffix},'biz-a',${`${suffix}@example.test`},${`hash-${suffix}`},
+      now() - interval '3 days',
+      case when ${state} = 'expired' then now() - interval '1 day' else now() + interval '1 day' end,
+      case when ${state} = 'revoked' then now() else null end)`));
+}
+
+test("invitation migration installs on the actual application schema", () => {
+  const migration = readFileSync(new URL("../drizzle/0003_driver_invitations.sql", import.meta.url), "utf8");
+  query(inMigrationSchema(sql.raw(migration)));
+});
+
+test("acceptance creates one driver membership and replay creates nothing", () => {
+  issue("valid");
+  assert.equal(query(inMigrationSchema(acceptance("valid"))), "user-valid|driver-valid|biz-a");
+  assert.equal(query(inMigrationSchema(acceptance("valid", { userId: "replayed", driverId: "replayed" }))), "");
+  assert.equal(query(inMigrationSchema(sql`select count(*) from users where email='valid@example.test'`)), "1");
+  assert.equal(query(inMigrationSchema(sql`select count(*) from drivers where user_id='user-valid' and business_id='biz-a'`)), "1");
+  assert.equal(query(inMigrationSchema(sql`select accepted_at is not null from driver_invitations where id='valid'`)), "t");
+});
+
+test("expired, revoked, unknown and wrong-recipient invitations create no accounts", () => {
+  issue("expired", "expired");
+  issue("revoked", "revoked");
+  issue("wrong");
+  for (const [suffix, overrides] of [
+    ["expired", {}], ["revoked", {}], ["unknown", {}],
+    ["wrong", { email: "someone-else@example.test" }],
+  ]) {
+    assert.equal(query(inMigrationSchema(acceptance(suffix, overrides))), "");
+    assert.equal(query(inMigrationSchema(sql`select count(*) from users where id=${`user-${suffix}`}`)), "0");
+  }
+});
+
+test("existing accounts are never overwritten and the invitation stays pending", () => {
+  issue("existing");
+  query(inMigrationSchema(sql`insert into users(id,email,password_hash,name,role)
+    values ('existing-user','existing@example.test','original-hash','Original','customer')`));
+  assert.equal(query(inMigrationSchema(acceptance("existing"))), "");
+  assert.equal(query(inMigrationSchema(sql`select password_hash,role from users where id='existing-user'`)), "original-hash|customer");
+  assert.equal(query(inMigrationSchema(sql`select accepted_at is null from driver_invitations where id='existing'`)), "t");
+});
+
+test("a driver insert failure rolls back user creation and invitation consumption", () => {
+  issue("rollback");
+  assert.throws(() => query(inMigrationSchema(acceptance("rollback", { driverId: "driver-a" }))));
+  assert.equal(query(inMigrationSchema(sql`select count(*) from users where id='user-rollback'`)), "0");
+  assert.equal(query(inMigrationSchema(sql`select accepted_at is null from driver_invitations where id='rollback'`)), "t");
+});
+
+test("concurrent acceptance of one invitation succeeds exactly once", async () => {
+  issue("race");
+  const results = await Promise.all([
+    concurrentQuery(inMigrationSchema(acceptance("race", { userId: "race-one", driverId: "race-one" }))),
+    concurrentQuery(inMigrationSchema(acceptance("race", { userId: "race-two", driverId: "race-two" }))),
+  ]);
+  assert.equal(results.filter(Boolean).length, 1);
+  assert.equal(query(inMigrationSchema(sql`select count(*) from users where email='race@example.test'`)), "1");
+  assert.equal(query(inMigrationSchema(sql`select count(*) from drivers where user_id in ('race-one','race-two')`)), "1");
+});
+
+test("two invitations for the same email cannot create two accounts or fleets", async () => {
+  issue("shared");
+  query(inMigrationSchema(sql`insert into driver_invitations (id,business_id,email,token_hash,expires_at)
+    values ('shared-other','biz-b','shared@example.test','hash-shared-other',now()+interval '1 day')`));
+  const results = await Promise.all([
+    concurrentQuery(inMigrationSchema(acceptance("shared"))),
+    concurrentQuery(inMigrationSchema(acceptance("shared", {
+      tokenHash: "hash-shared-other", userId: "shared-other-user", driverId: "shared-other-driver",
+    }))),
+  ]);
+  assert.equal(results.filter(Boolean).length, 1);
+  assert.equal(query(inMigrationSchema(sql`select count(*) from users where email='shared@example.test'`)), "1");
+  assert.equal(query(inMigrationSchema(sql`select count(*) from driver_invitations
+    where email='shared@example.test' and accepted_at is not null`)), "1");
+});
+
+test("revocation competing with acceptance leaves exactly one terminal state", async () => {
+  issue("revoke-race");
+  await Promise.all([
+    concurrentQuery(inMigrationSchema(acceptance("revoke-race"))),
+    concurrentQuery(inMigrationSchema(sql`update driver_invitations set revoked_at=now()
+      where id='revoke-race' and accepted_at is null and revoked_at is null returning id`)),
+  ]);
+  const state = query(inMigrationSchema(sql`select accepted_at is not null,revoked_at is not null
+    from driver_invitations where id='revoke-race'`));
+  assert.ok(state === "t|f" || state === "f|t", state);
+  assert.equal(query(inMigrationSchema(sql`select count(*) from users where email='revoke-race@example.test'`)), state === "t|f" ? "1" : "0");
 });

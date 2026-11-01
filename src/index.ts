@@ -9,6 +9,7 @@ import type { ServerType } from "@hono/node-server";
 
 import { HTTPException } from "hono/http-exception";
 import { authRouter } from "@/routes/auth";
+import { driverInvitationsRouter } from "@/routes/driver-invitations";
 import { shipmentsRouter } from "@/routes/shipments";
 import { driversRouter } from "@/routes/drivers";
 import { businessRouter } from "@/routes/business";
@@ -51,6 +52,7 @@ app.get("/health", (c) => {
 const v1 = new Hono();
 
 v1.route("/auth", authRouter);
+v1.route("/driver-invitations", driverInvitationsRouter);
 v1.route("/shipments", shipmentsRouter);
 v1.route("/drivers", driversRouter);
 v1.route("/business", businessRouter);

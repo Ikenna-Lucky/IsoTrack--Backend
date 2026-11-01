@@ -22,6 +22,13 @@
       "when": 1793491200000,
       "tag": "0002_private_fleets",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793491200001,
+      "tag": "0003_driver_invitations",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,8 @@ A driver has at most one profile (`drivers.user_id` is unique) and one business
 membership (`drivers.business_id`). Business owners can discover and assign only
 drivers in their own fleet. Drivers can read shipments only while assignment and
 fleet membership both match. Public driver registration returns a denial; account
-creation through an invitation acceptance workflow is the next implementation step.
+creation through the invitation acceptance workflow is documented in
+`docs/driver-invitations.md`. Existing-account enrollment remains outstanding.
 
 ## Migration
 

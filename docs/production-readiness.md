@@ -14,7 +14,7 @@ must be established by measurement. Do not use paid services without approval.
 | --- | --- | --- |
 | Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports | Initial GitHub workflow added; not executed remotely; lint and integration gates outstanding |
 | Response privacy | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles | Query projection implemented; integration unverified |
-| Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | Membership, fleet-scoped discovery/assignment, blocked public driver registration implemented; invitation lifecycle and HTTP evidence outstanding |
+| Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | Membership, fleet scoping and new-account invitation lifecycle implemented; existing-account enrollment, abuse controls and HTTP evidence outstanding |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding |
 | Sessions | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification | Planned |
 | Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Planned |
@@ -98,3 +98,27 @@ Migration execution uses psql, not the application migration runner. No live
 database changes were made. See `docs/private-fleets.md` for migration prerequisites,
 legacy reconciliation, and outstanding release gates. Schema generation metadata
 is updated in `0002_snapshot.json`.
+
+## Driver invitation batch — 2026-11-01
+
+Added owner-scoped issue/list/revoke endpoints and new-account acceptance. Tokens
+contain 256 random bits, are returned only at creation, stored as SHA-256 hashes,
+and expire after 48 hours using the database clock. Acceptance binds the invited
+email and creates the user/profile/membership and consumes the invitation in one
+locked SQL statement. Passwords are never changed on existing accounts. Account
+email verification is not implied by an owner-issued invitation.
+
+Local evidence: Node 24.12.0, disposable PostgreSQL 17 via Docker:
+
+- `npm.cmd run type-check`: passed.
+- `npm.cmd run test:unit`: 2 passed, 0 failed, 0 skipped.
+- `node --test tests/shipment-access.integration.mjs`: 18 passed, 0 failed,
+  0 skipped. Includes actual invitation migration, acceptance/replay, expiry,
+  revocation, recipient mismatch, rollback, existing-account protection,
+  concurrent acceptance, competing invitations and revoke/accept races.
+
+The production SQL statement is exercised directly through psql; the HTTP driver,
+Hono routing, provider wiring and deployed environment remain unverified. Existing
+CI discovers the expanded suite; no remote execution is claimed. No live database
+migration or invitation email was performed. Tokens are manually shared for now.
+See `docs/driver-invitations.md` for contracts and remaining release blockers.

@@ -9,3 +9,4 @@ export * from "./shipments";
 export * from "./shipment-events";
 export * from "./notifications";
 export * from "./payments";
+export * from "./driver-invitations";
