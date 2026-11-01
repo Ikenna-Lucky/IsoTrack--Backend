@@ -190,7 +190,7 @@ shipmentsRouter.post(
 );
 
 shipmentsRouter.get("/:id", async (c) => {
-  const shipment = await findShipmentById(c.req.param("id"));
+  const shipment = await findShipmentById(c.req.param("id"), { userId: c.get("userId"), role: c.get("userRole") });
   if (!shipment) return error(c, "Shipment not found", 404);
   return success(c, { data: shipment });
 });
@@ -203,8 +203,15 @@ shipmentsRouter.patch(
     const id = c.req.param("id")!;
     const { status: newStatus, note } = c.req.valid("json");
 
-    const shipment = await findShipmentById(id);
+    const shipment = await findShipmentById(id, { userId: c.get("userId"), role: c.get("userRole") });
     if (!shipment) return error(c, "Shipment not found", 404);
+
+    if (newStatus === "assigned") {
+      return error(c, "Use the driver assignment endpoint to assign a shipment", 422);
+    }
+    if (c.get("userRole") === "driver" && ["pending", "cancelled"].includes(newStatus)) {
+      return error(c, "Only the business can retry or cancel a shipment", 403);
+    }
 
     const allowed = VALID_TRANSITIONS[shipment.status] ?? [];
     if (!allowed.includes(newStatus)) {
@@ -279,7 +286,7 @@ shipmentsRouter.patch(
     const id = c.req.param("id")!;
     const { driverId } = c.req.valid("json");
 
-    const shipment = await findShipmentById(id);
+    const shipment = await findShipmentById(id, { userId: c.get("userId"), role: c.get("userRole") });
     if (!shipment) return error(c, "Shipment not found", 404);
     if (shipment.status !== "pending")
       return error(c, "Only pending shipments can be assigned", 422);
@@ -340,7 +347,7 @@ shipmentsRouter.patch(
 );
 
 shipmentsRouter.delete("/:id", requireRole("business"), async (c) => {
-  const shipment = await findShipmentById(c.req.param("id")!);
+  const shipment = await findShipmentById(c.req.param("id")!, { userId: c.get("userId"), role: c.get("userRole") });
   if (!shipment) return error(c, "Shipment not found", 404);
 
   const allowed = VALID_TRANSITIONS[shipment.status] ?? [];

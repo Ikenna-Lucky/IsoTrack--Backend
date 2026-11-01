@@ -33,11 +33,15 @@ jobs:
         run: node --test --test-reporter=junit --test-reporter-destination=unit-results.xml tests/*.test.mjs
       - name: Build
         run: bun run build
+      - name: PostgreSQL ownership integration tests
+        run: node --test --test-reporter=junit --test-reporter-destination=integration-results.xml tests/*.integration.mjs
       - name: Retain test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: unit-results
-          path: unit-results.xml
+          path: |
+            unit-results.xml
+            integration-results.xml
           if-no-files-found: warn
           retention-days: 14

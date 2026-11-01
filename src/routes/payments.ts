@@ -26,7 +26,7 @@ paymentsRouter.post(
     const { shipmentId } = c.req.valid("json");
     const userId = c.get("userId");
 
-    const shipment = await findShipmentById(shipmentId);
+    const shipment = await findShipmentById(shipmentId, { userId: c.get("userId"), role: c.get("userRole") });
     if (!shipment) return error(c, "Shipment not found", 404);
     if (shipment.isPaid) return error(c, "Shipment is already paid", 400);
 

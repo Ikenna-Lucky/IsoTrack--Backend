@@ -1,4 +1,5 @@
 import { shipmentContactColumns } from "@/db/queries/user-columns";
+import { shipmentAccessPredicate, type ShipmentActor } from "./shipment-access";
 import { eq, and, desc, count, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { shipments, shipmentEvents } from "@/db/schema";
@@ -6,9 +7,9 @@ import type { NewShipment, Shipment, NewShipmentEvent } from "@/db/schema";
 
 // ─── Read ──────────────────────────────────────────────────────────────────────
 
-export async function findShipmentById(id: string) {
+export async function findShipmentById(id: string, actor: ShipmentActor) {
   return db.query.shipments.findFirst({
-    where: eq(shipments.id, id),
+    where: and(eq(shipments.id, id), shipmentAccessPredicate(shipments, actor)),
     with: {
       driver: { with: { user: { columns: shipmentContactColumns } } },
       customer: { columns: shipmentContactColumns },
