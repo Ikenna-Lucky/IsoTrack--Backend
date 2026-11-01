@@ -27,6 +27,7 @@ export function shipmentAccessPredicate(
         select 1 from "drivers" as "assigned_driver"
         where "assigned_driver"."id" = ${columns.driverId}
           and "assigned_driver"."user_id" = ${actor.userId}
+          and "assigned_driver"."business_id" = ${columns.businessId}
       )`;
     case "customer":
       return sql`${columns.customerId} = ${actor.userId}`;

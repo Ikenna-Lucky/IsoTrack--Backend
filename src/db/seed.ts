@@ -237,6 +237,7 @@ async function seed(): Promise<void> {
     {
       id: driver1Id,
       userId: driverUser1Id,
+      businessId: business1Id,
       vehicleType: "bike",
       vehiclePlate: "LND-421-GH",
       status: "available",
@@ -249,6 +250,7 @@ async function seed(): Promise<void> {
     {
       id: driver2Id,
       userId: driverUser2Id,
+      businessId: business1Id,
       vehicleType: "car",
       vehiclePlate: "ABC-789-FG",
       status: "on_delivery",
@@ -261,6 +263,7 @@ async function seed(): Promise<void> {
     {
       id: driver3Id,
       userId: driverUser3Id,
+      businessId: business2Id,
       vehicleType: "van",
       vehiclePlate: "KJA-554-CE",
       status: "offline",
@@ -352,7 +355,7 @@ async function seed(): Promise<void> {
       trackingId: trackingIds[2]!,
       status: "out_for_delivery",
       businessId: business2Id,
-      driverId: driver1Id,
+      driverId: driver3Id,
       customerId: customerUser3Id,
       description: "Documents — Legal papers",
       weightKg: 0.2,
@@ -479,7 +482,7 @@ async function seed(): Promise<void> {
       trackingId: trackingIds[6]!,
       status: "failed",
       businessId: business2Id,
-      driverId: driver1Id,
+      driverId: driver3Id,
       customerId: customerUser3Id,
       description: "Fragile — Glassware set",
       weightKg: 3,
@@ -694,7 +697,7 @@ async function seed(): Promise<void> {
       id: id(),
       shipmentId: shipmentIds[2]!,
       status: "assigned",
-      message: "Driver Babatunde assigned.",
+      message: "Driver Fatima assigned.",
       createdAt: daysAgo(1),
     },
     {
@@ -897,7 +900,7 @@ async function seed(): Promise<void> {
       userId: customerUser3Id,
       type: "email",
       title: "Driver is on the way",
-      message: `Driver Babatunde is out for delivery of your package (${trackingIds[2]}). ETA: 2 hours.`,
+      message: `Driver Fatima is out for delivery of your package (${trackingIds[2]}). ETA: 2 hours.`,
       isRead: false,
       status: "sent",
       createdAt: new Date(),
@@ -914,7 +917,7 @@ async function seed(): Promise<void> {
     },
     {
       id: id(),
-      userId: driverUser1Id,
+      userId: driverUser3Id,
       type: "push",
       title: "New delivery assigned",
       message: `You have been assigned a new delivery (${trackingIds[2]}). Please pick up from SwiftCargo Abuja.`,

@@ -13,6 +13,7 @@ import {
 import { db } from "@/db";
 import { drivers } from "@/db/schema";
 import { sanitizeUser } from "@/db/queries/users";
+import { fleetAccessPredicate } from "@/db/queries/fleet-access";
 import { success, error } from "@/lib/response";
 
 export const driversRouter = new Hono();
@@ -51,10 +52,11 @@ const notifPrefsSchema = z.object({
 });
 
 // ─── GET /drivers ─────────────────────────────────────────────────────────────
-// Business: list all drivers registered under the platform.
+// Business: list drivers in its private fleet.
 
 driversRouter.get("/", requireRole("business"), async (c) => {
   const rows = await db.query.drivers.findMany({
+    where: fleetAccessPredicate(drivers.businessId, c.get("userId")),
     with: { user: true },
     orderBy: (d, { desc }) => [desc(d.createdAt)],
   });
@@ -161,6 +163,7 @@ driversRouter.patch("/me/status", requireRole("driver"), zValidator("json", stat
   const driver = await findDriverByUserId(userId);
   if (!driver) return error(c, "Driver profile not found", 404);
 
+  if (!driver.businessId && status !== "offline") return error(c, "Join a business fleet before going online", 403);
   const updated = await updateDriverStatus(driver.id, status);
   return success(c, { data: updated, message: `Status set to ${status}` });
 });
@@ -183,7 +186,7 @@ driversRouter.patch("/me/location", requireRole("driver"), zValidator("json", lo
 // Business: list only drivers whose status is "available".
 
 driversRouter.get("/available", requireRole("business"), async (c) => {
-  const rows = await findAvailableDrivers();
+  const rows = await findAvailableDrivers(c.get("userId"));
   const data = rows.map((d) => ({ ...d, user: sanitizeUser(d.user) }));
   return success(c, { data });
 });
@@ -193,7 +196,7 @@ driversRouter.get("/available", requireRole("business"), async (c) => {
 
 driversRouter.get("/:id", requireRole("business"), async (c) => {
   const id     = c.req.param("id")!;
-  const driver = await findDriverById(id);
+  const driver = await findDriverById(id, c.get("userId"));
   if (!driver) return error(c, "Driver not found", 404);
   return success(c, { data: { ...driver, user: sanitizeUser(driver.user) } });
 });

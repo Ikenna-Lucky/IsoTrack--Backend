@@ -7,6 +7,7 @@ import {
   boolean,
   jsonb,
   index,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { shipmentStatusEnum } from "./enums";
@@ -62,6 +63,11 @@ export const shipments = pgTable(
       .notNull(),
   },
   (t) => [
+    foreignKey({
+      name: "shipments_driver_business_fk",
+      columns: [t.driverId, t.businessId],
+      foreignColumns: [drivers.id, drivers.businessId],
+    }).onDelete("restrict"),
     index("shipments_tracking_id_idx").on(t.trackingId),
     index("shipments_business_id_idx").on(t.businessId),
     index("shipments_driver_id_idx").on(t.driverId),

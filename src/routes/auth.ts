@@ -20,7 +20,7 @@ import {
   sanitizeUser,
 } from "@/db/queries/users";
 import { db } from "@/db";
-import { businesses, drivers, users } from "@/db/schema";
+import { businesses, users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { updateUser } from "@/db/queries/users";
 import { success, error } from "@/lib/response";
@@ -101,6 +101,8 @@ export const authRouter = new Hono();
 authRouter.post("/register", zValidator("json", registerSchema), async (c) => {
   const body = c.req.valid("json");
 
+  if (body.role === "driver") return error(c, "Drivers must join through a business invitation", 403);
+
   // Check if email already taken
   const existing = await findUserByEmail(body.email);
   if (existing) {
@@ -131,17 +133,6 @@ authRouter.post("/register", zValidator("json", registerSchema), async (c) => {
     });
   }
 
-  if (body.role === "driver") {
-    await db.insert(drivers).values({
-      id: nanoid(),
-      userId: user.id,
-      vehicleType: body.vehicleType!,
-      vehiclePlate: body.vehiclePlate!,
-      status: "offline",
-      rating: 5.0,
-      totalDeliveries: 0,
-    });
-  }
 
   // Issue tokens
   const [accessToken, refreshToken] = await Promise.all([

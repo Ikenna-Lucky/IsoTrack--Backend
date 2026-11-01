@@ -2,7 +2,7 @@ import { shipmentContactColumns } from "@/db/queries/user-columns";
 import { shipmentAccessPredicate, type ShipmentActor } from "./shipment-access";
 import { eq, and, desc, count, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { shipments, shipmentEvents } from "@/db/schema";
+import { shipments, shipmentEvents, drivers } from "@/db/schema";
 import type { NewShipment, Shipment, NewShipmentEvent } from "@/db/schema";
 
 // ─── Read ──────────────────────────────────────────────────────────────────────
@@ -69,11 +69,17 @@ export async function findShipmentsByDriver(
   driverId: string,
   opts: { includeCompleted?: boolean } = {},
 ) {
+  const fleetMembership = sql`exists (
+    select 1 from ${drivers} as "fleet_driver"
+    where "fleet_driver"."id" = ${shipments.driverId}
+      and "fleet_driver"."business_id" = ${shipments.businessId}
+  )`;
   return db.query.shipments.findMany({
     where: opts.includeCompleted
-      ? eq(shipments.driverId, driverId)
+      ? and(eq(shipments.driverId, driverId), fleetMembership)
       : and(
           eq(shipments.driverId, driverId),
+          fleetMembership,
           sql`${shipments.status} NOT IN ('delivered', 'failed', 'cancelled')`,
         ),
     with: {

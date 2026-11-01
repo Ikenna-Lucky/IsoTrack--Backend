@@ -6,16 +6,21 @@ import {
   real,
   jsonb,
   index,
+  uniqueIndex,
+  unique,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { vehicleTypeEnum, driverStatusEnum } from "./enums";
 import { users } from "./users";
+import { businesses } from "./businesses";
 import { shipments } from "./shipments";
 
 export const drivers = pgTable(
   "drivers",
   {
     id: text("id").primaryKey(),
+    // Null is reserved for legacy accounts awaiting explicit fleet onboarding.
+    businessId: text("business_id").references(() => businesses.id, { onDelete: "restrict" }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -38,6 +43,9 @@ export const drivers = pgTable(
       .notNull(),
   },
   (t) => [
+    uniqueIndex("drivers_user_id_unique").on(t.userId),
+    unique("drivers_id_business_unique").on(t.id, t.businessId),
+    index("drivers_business_status_idx").on(t.businessId, t.status),
     index("drivers_user_id_idx").on(t.userId),
     index("drivers_status_idx").on(t.status),
     index("drivers_vehicle_type_idx").on(t.vehicleType),

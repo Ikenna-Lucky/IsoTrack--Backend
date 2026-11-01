@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { nanoid } from "nanoid";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { authenticate, requireRole } from "@/middleware/auth";
 import {
   findShipmentById,
@@ -294,7 +294,7 @@ shipmentsRouter.patch(
     const [driver] = await db
       .select()
       .from(drivers)
-      .where(eq(drivers.id, driverId))
+      .where(and(eq(drivers.id, driverId), eq(drivers.businessId, shipment.businessId)))
       .limit(1);
     if (!driver) return error(c, "Driver not found", 404);
 

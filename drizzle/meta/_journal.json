@@ -15,6 +15,13 @@
       "when": 1747134000000,
       "tag": "0001_settings_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793491200000,
+      "tag": "0002_private_fleets",
+      "breakpoints": true
     }
   ]
 }

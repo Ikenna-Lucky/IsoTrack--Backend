@@ -14,7 +14,7 @@ must be established by measurement. Do not use paid services without approval.
 | --- | --- | --- |
 | Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports | Initial GitHub workflow added; not executed remotely; lint and integration gates outstanding |
 | Response privacy | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles | Query projection implemented; integration unverified |
-| Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | Planned |
+| Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | Membership, fleet-scoped discovery/assignment, blocked public driver registration implemented; invitation lifecycle and HTTP evidence outstanding |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding |
 | Sessions | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification | Planned |
 | Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Planned |
@@ -81,3 +81,20 @@ affect zero rows and leave status unchanged. The database uses a minimal fixture
 schema; actual migrations, HTTP authorization, provider calls and relation
 serialization are not covered. Added this suite and its JUnit report to GitHub
 Actions; remote execution remains unverified.
+
+## Private fleet foundation — 2026-11-01
+
+Added business membership, unique driver account constraint, fleet discovery
+predicate, assignment membership checks and a composite assignment foreign key.
+Driver shipment access now requires matching fleet membership as well as assignment.
+Existing unlinked drivers are quarantined rather than arbitrarily assigned; public
+driver registration is blocked pending invitation acceptance implementation.
+
+Executed PostgreSQL suite: **10 passed, 0 failed, 0 skipped**. Added checks for
+fleet discovery, excluded legacy memberships, actual initial-plus-forward migration
+SQL with skipped settings migration, repaired columns, unique driver accounts,
+cross-business assignment rejection and final FK validation on reconciled fixtures.
+Migration execution uses psql, not the application migration runner. No live
+database changes were made. See `docs/private-fleets.md` for migration prerequisites,
+legacy reconciliation, and outstanding release gates. Schema generation metadata
+is updated in `0002_snapshot.json`.

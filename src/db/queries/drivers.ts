@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { fleetAccessPredicate } from "./fleet-access";
 import { db } from "@/db";
 import { drivers } from "@/db/schema";
 import type { Driver, NewDriver } from "@/db/schema";
@@ -6,9 +7,9 @@ import type { Coordinates } from "@/types";
 
 // ─── Read ──────────────────────────────────────────────────────────────────────
 
-export async function findDriverById(id: string) {
+export async function findDriverById(id: string, ownerUserId: string) {
   return db.query.drivers.findFirst({
-    where: eq(drivers.id, id),
+    where: and(eq(drivers.id, id), fleetAccessPredicate(drivers.businessId, ownerUserId)),
     with: { user: true },
   });
 }
@@ -20,9 +21,9 @@ export async function findDriverByUserId(userId: string) {
   });
 }
 
-export async function findAvailableDrivers() {
+export async function findAvailableDrivers(ownerUserId: string) {
   return db.query.drivers.findMany({
-    where: eq(drivers.status, "available"),
+    where: and(eq(drivers.status, "available"), fleetAccessPredicate(drivers.businessId, ownerUserId)),
     with: { user: true },
   });
 }
