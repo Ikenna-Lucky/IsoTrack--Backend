@@ -29,6 +29,9 @@ import { hashInvitationToken } from "../src/lib/invitation-token.ts";
 import { SignJWT } from "jose";
 import { createAuthenticationMiddleware } from "../src/middleware/authentication.ts";
 import { verifySessionToken } from "../src/lib/token-verification.ts";
+import { confirmPaymentStatement } from "../src/db/queries/confirm-payment.ts";
+import { createPaystackWebhookRouter } from "../src/routes/paystack-webhook.ts";
+import { createHmac } from "node:crypto";
 
 const container = `isotrack-access-test-${randomUUID()}`;
 const image = "postgres:17-alpine";
@@ -965,4 +968,75 @@ test("failed initial history rolls back shipment creation", () => {
     ),
     "0",
   );
+});
+
+function paymentFixture(id) {
+  shipmentFixture(id);
+  query(inMigrationSchema(sql`insert into payments(id,shipment_id,paystack_reference,amount_kobo)
+    values (${id},${id},${`REF-${id}`},100)`));
+}
+function paymentConfirmation(id, overrides = {}) {
+  return inMigrationSchema(confirmPaymentStatement({ reference: `REF-${id}`, amountKobo: 100,
+    currency: "NGN", channel: "card", paidAt: "2026-11-03T00:00:00.000Z", ...overrides }));
+}
+
+test("payment and paid shipment commit together; duplicates preserve original receipt", () => {
+  paymentFixture("payment-success");
+  assert.equal(query(paymentConfirmation("payment-success")), "payment-success");
+  assert.equal(query(paymentConfirmation("payment-success", { channel: "bank", paidAt: "2026-11-04T00:00:00.000Z" })), "payment-success");
+  assert.equal(query(inMigrationSchema(sql`select p.status,p.channel,p.paid_at='2026-11-03T00:00:00Z'::timestamptz,s.is_paid
+    from payments p join shipments s on s.id=p.shipment_id where p.id='payment-success'`)), "success|card|t|t");
+});
+
+test("unknown reference, wrong amount and wrong currency cannot mark a shipment paid", () => {
+  paymentFixture("payment-mismatch");
+  for (const overrides of [{ reference: "unknown" }, { amountKobo: 101 }, { currency: "USD" }]) {
+    assert.equal(query(paymentConfirmation("payment-mismatch", overrides)), "");
+  }
+  assert.equal(query(inMigrationSchema(sql`select p.status,s.is_paid from payments p join shipments s on s.id=p.shipment_id
+    where p.id='payment-mismatch'`)), "pending|f");
+});
+
+test("refunded payments cannot be resurrected by a late success callback", () => {
+  paymentFixture("payment-refunded");
+  query(inMigrationSchema(sql`update payments set status='refunded' where id='payment-refunded'`));
+  assert.equal(query(paymentConfirmation("payment-refunded")), "");
+  assert.equal(query(inMigrationSchema(sql`select status from payments where id='payment-refunded'`)), "refunded");
+});
+
+test("a shipment write failure rolls back payment confirmation", () => {
+  paymentFixture("payment-rollback");
+  query(inMigrationSchema(sql.raw(`create function reject_payment_flag() returns trigger language plpgsql as $$
+    begin if new.id='payment-rollback' and new.is_paid then
+      raise exception 'forced settlement failure'; end if; return new; end $$;
+    create trigger reject_payment_flag before update on shipments for each row execute function reject_payment_flag();`)));
+  assert.throws(() => query(paymentConfirmation("payment-rollback")),
+    (error) => error.stderr.includes("forced settlement failure"));
+  assert.equal(query(inMigrationSchema(sql`select p.status,p.paid_at is null,s.is_paid from payments p
+    join shipments s on s.id=p.shipment_id where p.id='payment-rollback'`)), "pending|t|f");
+});
+
+test("concurrent webhook and verification confirmation converge on one paid state", async () => {
+  paymentFixture("payment-race");
+  const results = await Promise.all([
+    concurrentQuery(paymentConfirmation("payment-race")),
+    concurrentQuery(paymentConfirmation("payment-race")),
+  ]);
+  assert.deepEqual(results, ["payment-race", "payment-race"]);
+  assert.equal(query(inMigrationSchema(sql`select p.status,s.is_paid from payments p join shipments s on s.id=p.shipment_id
+    where p.id='payment-race'`)), "success|t");
+});
+
+test("signed webhook HTTP handler confirms and replays against real PostgreSQL", async () => {
+  paymentFixture("payment-http");
+  const secret = "isolated-webhook-integration-key";
+  const router = createPaystackWebhookRouter({ secret, confirm: async (payment) =>
+    Boolean(query(inMigrationSchema(confirmPaymentStatement(payment)))) });
+  const body = JSON.stringify({ event: "charge.success", data: { reference: "REF-payment-http", status: "success",
+    amount: 100, currency: "NGN", channel: "card", paid_at: "2026-11-03T00:00:00.000Z" } });
+  const send = () => router.request("/webhook", { method: "POST", body,
+    headers: { "x-paystack-signature": createHmac("sha512", secret).update(body).digest("hex") } });
+  assert.equal((await send()).status, 200);
+  assert.equal((await send()).status, 200);
+  assert.equal(query(inMigrationSchema(sql`select is_paid from shipments where id='payment-http'`)), "t");
 });

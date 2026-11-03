@@ -18,7 +18,7 @@ must be established by measurement. Do not use paid services without approval.
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding |
 | Sessions | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification | JWT algorithm/type/claim validation and middleware error boundaries tested; revocation, refresh reuse and recovery outstanding |
 | Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Creation/transitions and history are atomic; status-conflict, rollback and assignment-race tests pass; durable idempotency, versioning, proof and returns outstanding |
-| Payments | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence | Existing webhook blocked by auth; release blocker |
+| Payments | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence | Public signed webhook and atomic repeat-safe confirmation tested; initialization idempotency, reconciliation, refunds and provider sandbox evidence outstanding |
 | Tracking | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy | Missing; release blocker |
 | Notifications | Durable dispatch, preferences enforced, bounded retries and replay, valid links | Incomplete |
 | Migrations | Fresh install and supported upgrade tested; business preference columns included; chronological journal repaired safely | Failed inspection |
@@ -189,3 +189,31 @@ verification. Expected-status checks do not replace version-aware updates or
 idempotency; status cycles and post-commit notification failures remain documented
 risks in `docs/shipment-transitions.md`. No migration or live database change was
 required.
+
+## Payment confirmation — 2026-11-03
+
+Moved the signed webhook ahead of user authentication while protecting other
+payment routes with business/customer authentication. Added raw-byte HMAC-SHA512
+verification, bounded bodies, schema validation, fail-closed missing configuration
+and non-success acknowledgment for unrecorded successes. Initialization now stores
+a pending reference before contacting the provider and validates its response.
+Manual verification checks local ownership before contacting Paystack. Provider
+requests have a bounded deadline.
+
+Webhook and verification share a locked, atomic PostgreSQL confirmation statement
+checking reference, amount, shipment price, NGN currency and permitted local state.
+Duplicates preserve the original receipt. Refunded payments cannot be resurrected.
+
+Evidence: type checking and 24 fast tests passed, 0 failed/skipped. PostgreSQL suite:
+38 passed, 0 failed/skipped. Payment cases include signed HTTP persistence/replay,
+amount/currency/reference mismatch, refunded state, forced shipment-write rollback
+and competing webhook/verification confirmation. A fast-test harness initially
+mapped Hono's body-limit HTTPException to 500; aligned its exception handling with
+the application and verified the intended 413 response.
+
+Official Paystack webhook/verification docs were consulted. Test signatures and
+provider response fixtures are local; no sandbox or live transaction was made.
+The SQL adapter uses psql, not deployed Neon HTTP. Initialization and verification
+full HTTP/provider journeys, reconciliation, refunds, duplicate-charge handling,
+initialization idempotency, operational alerts and remote CI remain unverified or
+outstanding. No migration or live application database change was required.

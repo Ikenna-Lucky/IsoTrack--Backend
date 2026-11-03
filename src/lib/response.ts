@@ -43,7 +43,7 @@ export function paginated<T>(c: Context, options: PaginatedOptions<T>) {
 export function error(
   c: Context,
   message: string,
-  status: 400 | 401 | 403 | 404 | 409 | 422 | 500 = 400,
+  status: 400 | 401 | 403 | 404 | 409 | 422 | 500 | 502 | 503 = 400,
 ) {
   const errorCodes: Record<number, string> = {
     400: "BAD_REQUEST",
@@ -53,6 +53,8 @@ export function error(
     409: "CONFLICT",
     422: "UNPROCESSABLE_ENTITY",
     500: "INTERNAL_SERVER_ERROR",
+    502: "BAD_GATEWAY",
+    503: "SERVICE_UNAVAILABLE",
   };
   return c.json(
     {
