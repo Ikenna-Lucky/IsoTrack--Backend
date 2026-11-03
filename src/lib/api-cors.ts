@@ -5,7 +5,7 @@ export function apiCors(frontendUrl: string) {
     origin: [new URL(frontendUrl).origin],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
-    exposeHeaders: ["Idempotency-Replayed", "Retry-After"],
+    exposeHeaders: ["Idempotency-Replayed", "Retry-After", "X-Request-Id"],
     credentials: true,
     maxAge: 86400,
   });

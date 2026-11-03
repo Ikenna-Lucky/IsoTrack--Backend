@@ -8,8 +8,8 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **7.5/10** after password recovery and email verification
-(2026-11-03), up from the prior 7/10 assessment. Update this estimate after each
+Current completion estimate: **7.5/10** after identity recovery and login/signup abuse protection
+(2026-11-03), unchanged by the latest control-focused build. Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
 critical journeys, identity/browser adoption, remaining write idempotency/versioning, payment lifecycle,
@@ -23,7 +23,7 @@ observability, load testing and recovery evidence remain substantial work.
 | Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | Query projection implemented; integration unverified                                                                                                                                                                                                                                     |
 | Private fleets         | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests           | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding                                                                                          |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding                                                                                                                                                 |
-| Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, reset/verification HTTP and durable email delivery, credential invalidation and PostgreSQL races verified locally; full login/password journeys, verified-email policy, frontend/browser adoption, provider and deployed evidence outstanding                       |
+| Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, guarded login/signup/recovery HTTP, atomic signup and credential races verified locally; full app/browser journeys, verified-email policy, hosting ingress, provider and deployed evidence outstanding                       |
 | Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/transitions/history are atomic; creation idempotency, rollback/replay and assignment races verified locally; remaining command idempotency/versioning, proof and returns outstanding                                                                                            |
 | Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Signed webhook/atomic confirmation and same-key initialization retries verified locally; reconciliation, distinct-attempt lifecycle, refunds and actual provider sandbox evidence outstanding                                                                                            |
 | Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding            |
@@ -540,3 +540,57 @@ Neon, telemetry and recovery/capacity evidence remain release gates. See
 docs/account-recovery.md for exact contracts and limitations. No frontend, live
 database, external email account or deployment was modified. Completion estimate:
 **7.5/10**, a scoped planning estimate rather than release approval.
+
+## Login and registration abuse protection — 2026-11-03
+
+PR-04/05/07/09 acceptance: shared pre-bcrypt limits, bounded JSON input, consistent
+login failures, temporary rather than account-wide permanent lockouts, explicit
+proxy trust, redacted security events and real HTTP/SQL concurrency tests. Login
+now admits 30 attempts per peer/ten-minute window and ten per peer/email pair;
+registration admits five per peer/hour. PostgreSQL conditional UPSERT counters
+in the existing migration 0008 table enforce budgets across instances. Denials
+do not extend windows or deactivate accounts. Keys are purpose-separated HMAC
+pseudonyms derived with JWT_SECRET; IPv6 authentication peers share a /64 budget.
+No new migration, dependency, additional secret or Redis requirement was added.
+
+The shared resolver defaults to socket peers. Only explicitly allowlisted exact
+TRUSTED_PROXY_IPS may supply one valid X-Real-IP; missing/malformed values fail
+closed, and other forwarding headers are ignored. Recovery routes use the same
+resolver. Real ingress header rewriting and network restrictions remain unverified.
+Unknown, wrong-password and inactive accounts share one 401 body, with a cost-12
+dummy comparison and minimum response window for short paths. These controls do
+not establish constant-time HTTP or distributed bot resistance. Structured events
+contain only operation/outcome/requestId; the correlation header is exposed by CORS.
+
+Signup now creates the user and business profile atomically in one SQL statement.
+Concurrent duplicate emails create one account/profile, failed profile insertion
+rolls back the user, and public driver creation remains blocked. Session issuance
+is subsequent: a failure can leave a complete account that recovers through login.
+Duplicate signup still returns 409; full registration enumeration resistance is
+not claimed. Successful token/cookie shape and the public user projection remain
+compatible. No frontend files were changed; existing request shapes were inspected.
+
+Local Windows / Node 24.12.0 evidence: lint, type checks and Bun 1.3.12 build passed.
+51 fast tests and all 127 integration tests passed with zero failures, skips,
+todos or cancellations. The full seven-file integration run took about 446 seconds
+with two files in parallel. Validated JUnit/JSON evidence remains in reports/unit.*
+and reports/integration.*; commit=null locally. Thirteen new integration cases
+run actual PostgreSQL 17 with the complete migration journal, independent Hono
+HTTP servers, the real socket adapter, bcrypt, session statements and jose-signed
+fixture credentials. They cover shared last-slot contention, peer and pair limits,
+expiry/no extension, SQL races/stale windows, different trusted peers, generic
+failures, signup races/rollback/session-failure recovery, credential invalidation,
+proxy spoofing/outages and oversized bodies. Three new fast tests cover proxy/IP
+normalization, IPv6 grouping, strict inputs and secret-free failure/event fields;
+the CORS regression also checks X-Request-Id exposure. The initial lint run caught
+an unused legacy cookie-helper import; removed it and passed the required checks.
+
+Production env-bound signing, complete entrypoint and hosted Neon/Bun transport,
+browser journeys, real ingress, remote GitHub Actions, edge/global budgets,
+compromised-password screening, MFA and measured auth CPU/SQL capacity remain
+release gates. Existing account-actions:purge also removes old authentication
+counter windows; scheduling and security-event collection/alerts remain deployment
+work. No live database, external account, frontend or deployment was modified.
+See docs/auth-abuse-protection.md for policy, rollout and limitations. Completion
+remains **7.5/10**: payment lifecycle, deployment, operational recovery and capacity
+evidence are still substantial blockers to the production-readiness objective.

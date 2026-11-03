@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tokenDurationSeconds } from "./token-duration";
+import { trustedProxyAddresses } from "./request-peer";
 
 const tokenLifetime = z.string().refine((value) => {
   try {
@@ -18,6 +19,17 @@ const envSchema = z
       .default("development"),
     APP_URL: z.string().url().default("http://localhost:8000"),
     FRONTEND_URL: z.string().url().default("http://localhost:3000"),
+    TRUSTED_PROXY_IPS: z
+      .string()
+      .default("")
+      .refine((value) => {
+        try {
+          trustedProxyAddresses(value);
+          return true;
+        } catch {
+          return false;
+        }
+      }, "Use comma-separated exact proxy IP addresses, without CIDRs or wildcards"),
 
     DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 

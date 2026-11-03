@@ -45,7 +45,13 @@ export async function updateUser(
   data: Partial<
     Pick<
       User,
-      "name" | "phone" | "avatar" | "emergencyContact" | "isEmailVerified" | "isActive" | "updatedAt"
+      | "name"
+      | "phone"
+      | "avatar"
+      | "emergencyContact"
+      | "isEmailVerified"
+      | "isActive"
+      | "updatedAt"
     >
   >,
 ): Promise<User | null> {
@@ -59,8 +65,4 @@ export async function updateUser(
 
 // ─── Sanitize ──────────────────────────────────────────────────────────────────
 
-/** Strip sensitive fields before sending to client */
-export function sanitizeUser(user: User): Omit<User, "passwordHash" | "credentialVersion"> {
-  const { passwordHash: _, credentialVersion: __, ...safe } = user;
-  return safe;
-}
+export { sanitizeUser } from "../../lib/public-user";

@@ -86,3 +86,10 @@ recovery/verification, bcrypt changes, signed JWT/session revocation, concurrent
 tokens, PostgreSQL resend/peer limits, rollback on notice failure, SMTP exhaustion,
 lease fencing, injected completion loss and cleanup. No application credentials
 or external mail provider are used. See docs/account-recovery.md for boundaries.
+
+The public-auth suite creates `isotrack-auth-test-*` PostgreSQL, applies the full
+migration journal and starts independent loopback Hono servers sharing the same
+database. A third server tests explicitly trusted proxy handling. It exercises
+real bcrypt, SQL budgets, signup/profile atomicity, concurrent HTTP requests and
+signed fixture sessions. No production credentials or hosted database are used.
+See docs/auth-abuse-protection.md for policy, boundaries and rollout requirements.

@@ -80,13 +80,14 @@ authentication middleware, real jose signatures and real PostgreSQL statements.
 
 The integration transport is a psql test adapter, not deployed Neon HTTP. The full
 login/password HTTP routes, browser coordination, production migration, deployed
-configuration and remote CI remain unverified. Rate limiting, device management,
+configuration and remote CI remain unverified. Device management,
 session audit telemetry and issuer/audience policy remain future hardening work.
 Socket verification and deployment limits are recorded in tracking.md. No
 production workload capacity is claimed.
 
 Password recovery and email verification now have separate HTTP/database/SMTP
 tests, including signed-session denial after reset and email-change invalidation.
-Their peer/resend budgets apply only to the account-action endpoints; login and
-registration abuse protection remain outstanding. See account-recovery.md for
-the contracts, configuration, frontend adoption and verification boundaries.
+Their peer/resend budgets apply only to the account-action endpoints. Login and
+registration now have separate PostgreSQL limits and a shared trusted-proxy
+resolver; see auth-abuse-protection.md. See account-recovery.md for recovery
+contracts, configuration, frontend adoption and verification boundaries.

@@ -1,27 +1,28 @@
 import { createSessionRouter } from "./sessions";
 import { createAccountActionRouter, accountPassword } from "./account-actions";
-import { getConnInfo } from "@hono/node-server/conninfo";
+import { createPublicAuthRouter } from "./public-auth";
+import { registerAccountStatement } from "@/db/queries/register-account";
+import { requestPeer } from "@/middleware/request-peer";
 import { writeStore } from "@/services/write-store";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { setCookie, deleteCookie } from "hono/cookie";
+import { deleteCookie } from "hono/cookie";
 import { z } from "zod";
 import { hash, compare } from "bcryptjs";
 import { nanoid } from "nanoid";
 
 import { env } from "@/lib/env";
-import { verifyRefreshToken, refreshTokenMaxAge } from "@/lib/jwt";
+import { verifyRefreshToken } from "@/lib/jwt";
 import { openSession, rotateSession, revokeSession } from "@/lib/sessions";
 import { changePasswordStatement } from "@/db/queries/session-statements";
 import { authenticate } from "@/middleware/auth";
 import {
   findUserByEmail,
   findUserById,
-  createUser,
   sanitizeUser,
 } from "@/db/queries/users";
 import { db } from "@/db";
-import { businesses, users } from "@/db/schema";
+import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { updateUser } from "@/db/queries/users";
 import { success, error } from "@/lib/response";
@@ -33,74 +34,9 @@ const BCRYPT_ROUNDS = 12;
 
 // ─── Cookie helpers ───────────────────────────────────────────────────────────
 
-function setRefreshCookie(
-  c: Parameters<typeof setCookie>[0],
-  token: string,
-  maxAge = refreshTokenMaxAge(),
-) {
-  const isProduction = env.NODE_ENV === "production";
-  setCookie(c, REFRESH_COOKIE, token, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? "None" : "Lax",
-    path: "/",
-    maxAge,
-  });
-}
-
 function clearRefreshCookie(c: Parameters<typeof deleteCookie>[0]) {
   deleteCookie(c, REFRESH_COOKIE, { path: "/" });
 }
-
-// ─── Schemas ──────────────────────────────────────────────────────────────────
-
-const registerSchema = z
-  .object({
-    name: z
-      .string()
-      .min(2, "Name must be at least 2 characters")
-      .max(100, "Name too long"),
-    email: z.string().email("Invalid email address"),
-    password: accountPassword,
-    role: z.enum(["business", "driver", "customer"], {
-      errorMap: () => ({
-        message: "Role must be business, driver, or customer",
-      }),
-    }),
-    phone: z
-      .string()
-      .regex(/^\+?[1-9]\d{6,14}$/, "Invalid phone number")
-      .optional()
-      .or(z.literal("")),
-    // Business-specific
-    businessName: z.string().min(2).max(100).optional(),
-    // Driver-specific
-    vehicleType: z.enum(["bike", "car", "van", "truck"]).optional(),
-    vehiclePlate: z.string().min(3).max(20).optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.role === "driver") {
-      if (!data.vehicleType) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["vehicleType"],
-          message: "Vehicle type is required for drivers",
-        });
-      }
-      if (!data.vehiclePlate) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["vehiclePlate"],
-          message: "Vehicle plate is required for drivers",
-        });
-      }
-    }
-  });
-
-const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(1, "Password is required"),
-});
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 
@@ -110,107 +46,31 @@ authRouter.route(
   createAccountActionRouter({
     store: writeStore,
     key: env.ACCOUNT_ACTION_SECRET,
-    peer: (c) => getConnInfo(c).remote.address,
+    peer: requestPeer,
     reportError: () =>
       console.error(JSON.stringify({ event: "account_action_failure" })),
   }),
 );
 
-// ─── POST /auth/register ──────────────────────────────────────────────────────
-
-authRouter.post("/register", zValidator("json", registerSchema), async (c) => {
-  const body = c.req.valid("json");
-
-  if (body.role === "driver")
-    return error(c, "Drivers must join through a business invitation", 403);
-
-  // Check if email already taken
-  const existing = await findUserByEmail(body.email);
-  if (existing) {
-    return error(c, "An account with this email already exists", 409);
-  }
-
-  // Hash password
-  const passwordHash = await hash(body.password, BCRYPT_ROUNDS);
-
-  // Create user
-  const user = await createUser({
-    id: nanoid(),
-    email: body.email,
-    passwordHash,
-    name: body.name,
-    role: body.role,
-    phone: body.phone || null,
-    isEmailVerified: false,
-    isActive: true,
-  });
-
-  // ── Create role-specific profile ──────────────────────────────────────────
-  if (body.role === "business") {
-    await db.insert(businesses).values({
-      id: nanoid(),
-      userId: user.id,
-      businessName: body.businessName ?? body.name,
-    });
-  }
-
-  // Issue tokens
-  const session = await openSession(user);
-  if (!session)
-    return error(c, "Account credentials changed. Please log in again", 401);
-  const { accessToken } = session;
-  setRefreshCookie(c, session.refreshToken, session.maxAge);
-
-  return success(c, {
-    data: {
-      user: sanitizeUser(user),
-      accessToken,
+authRouter.route(
+  "/",
+  createPublicAuthRouter({
+    store: writeStore,
+    secret: env.JWT_SECRET,
+    peer: requestPeer,
+    findUser: findUserByEmail,
+    register: async (input, passwordHash) => {
+      const id = nanoid();
+      const rows = await writeStore.execute(
+        registerAccountStatement(id, nanoid(), input, passwordHash),
+      );
+      return rows.length ? findUserById(id) : null;
     },
-    message: "Account created successfully",
-    status: 201,
-  });
-});
-
-// ─── POST /auth/login ─────────────────────────────────────────────────────────
-
-authRouter.post("/login", zValidator("json", loginSchema), async (c) => {
-  const { email, password } = c.req.valid("json");
-
-  // Find user
-  const user = await findUserByEmail(email);
-  if (!user) {
-    // Constant-time response — prevents user enumeration via timing
-    await hash("dummy_constant_time_check", BCRYPT_ROUNDS);
-    return error(c, "Invalid email or password", 401);
-  }
-
-  // Check password
-  const passwordMatch = await compare(password, user.passwordHash);
-  if (!passwordMatch) {
-    return error(c, "Invalid email or password", 401);
-  }
-
-  // Check if account is active
-  if (!user.isActive) {
-    return error(c, "Your account has been deactivated. Contact support.", 401);
-  }
-
-  // Issue tokens
-  const session = await openSession(user);
-  if (!session)
-    return error(c, "Account credentials changed. Please log in again", 401);
-  const { accessToken } = session;
-  setRefreshCookie(c, session.refreshToken, session.maxAge);
-
-  return success(c, {
-    data: {
-      user: sanitizeUser(user),
-      accessToken,
-    },
-    message: "Logged in successfully",
-  });
-});
-
+    openSession,
+    secureCookies: env.NODE_ENV === "production",
+    record: (event) => console.info(JSON.stringify(event)),
+  }),
+);
 // ─── POST /auth/refresh ───────────────────────────────────────────────────────
 
 authRouter.route(

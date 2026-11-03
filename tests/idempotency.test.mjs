@@ -95,6 +95,10 @@ test("API CORS permits idempotency preflights and exposes replay/retry headers",
     actual.headers.get("access-control-expose-headers"),
     /Retry-After/i,
   );
+  assert.match(
+    actual.headers.get("access-control-expose-headers"),
+    /X-Request-Id/i,
+  );
 });
 
 test("request fingerprints ignore object ordering and preserve meaningful changes", () => {

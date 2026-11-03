@@ -103,11 +103,13 @@ link merely by repeatedly requesting another. Only eligible accounts get account
 budget records. Peer identifiers are HMAC hashes, not raw IPs. Fixed-window bursts
 across a boundary are possible; these are not complete edge abuse controls.
 
-The adapter deliberately uses the direct socket address and ignores X-Forwarded-For.
-Behind a proxy, users may share its limit. Before deployment, define the trusted
-proxy/edge topology and enforce appropriate limits there; do not blindly trust
-forwarded headers. Login/register abuse protection, IPv6 subnet policies, global
-mail-provider budgets and distributed bot attacks still need release work.
+The adapter defaults to the direct socket address and ignores X-Forwarded-For.
+The common peer resolver now permits one validated X-Real-IP only from explicitly
+allowlisted immediate proxies. See auth-abuse-protection.md for TRUSTED_PROXY_IPS,
+required header rewriting and deployment restrictions. Login/register budgets and
+their IPv6 /64 grouping are implemented separately; recovery still budgets each
+resolved address. Recovery subnet policy, global mail-provider budgets and
+distributed bot attacks remain release work.
 
 Older delayed statements cannot move either budget back to an earlier window;
 regression tests simulate an already-advanced counter and verify denial.
