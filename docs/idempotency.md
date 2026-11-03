@@ -28,9 +28,10 @@ const response = await fetch(`${apiUrl}/api/v1/shipments`, {
 Keys accept 16–128 ASCII letters, digits, hyphens and underscores. Scope is the
 authenticated user plus operation: another user's key or the same key on the other
 operation is independent. The server stores a SHA-256 key hash, not the raw header.
-This is same-key protection; different keys or different users can still initiate
-separate payment attempts for an unpaid shipment. It is not a global guarantee
-against duplicate charges. Payment lifecycle/reconciliation remains release work.
+Migration 0009 additionally serializes payment initialization by shipment across
+keys and users. An existing uncertain checkout blocks replacement; provider expiry
+and reconciliation rules are described in docs/payments.md. This does not promise
+that a provider can never collect twice during an external settlement race.
 
 The fingerprint uses validated, normalized data with deterministic object-key
 ordering. JSON property ordering does not matter. Email casing, default address
@@ -113,8 +114,9 @@ A provider/storage failure can occur after Stripe has accepted the request.
 Errors for an established payment attempt include its local reference where
 available. Preserve that reference, key and body. Verify the payment, inspect the
 corresponding local record/Stripe request logs and signed webhook outcomes, and
-reconcile before starting a replacement operation. This build does not implement
-an automatic reconciliation job or operator UI. A cached Stripe 500 can remain an
+reconcile before starting a replacement operation. The API now runs a database-backed
+reconciliation sweep and provides operator commands (docs/payments.md); an operator
+UI is not implemented. A cached Stripe 500 can remain an
 ambiguous outcome; the application never rotates its key to escape that result.
 
 These constraints follow Stripe's official

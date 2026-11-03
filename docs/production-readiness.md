@@ -8,11 +8,11 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **7.5/10** after identity recovery and login/signup abuse protection
-(2026-11-03), unchanged by the latest control-focused build. Update this estimate after each
+Current completion estimate: **8/10** after payment lifecycle and duplicate collection controls
+(2026-11-04). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
-critical journeys, identity/browser adoption, remaining write idempotency/versioning, payment lifecycle,
+critical journeys, identity/browser adoption, remaining write idempotency/versioning, provider sandbox/payment policy,
 observability, load testing and recovery evidence remain substantial work.
 
 ## Release blockers and work order
@@ -25,7 +25,7 @@ observability, load testing and recovery evidence remain substantial work.
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding                                                                                                                                                 |
 | Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, guarded login/signup/recovery HTTP, atomic signup and credential races verified locally; full app/browser journeys, verified-email policy, hosting ingress, provider and deployed evidence outstanding                       |
 | Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/transitions/history are atomic; creation idempotency, rollback/replay and assignment races verified locally; remaining command idempotency/versioning, proof and returns outstanding                                                                                            |
-| Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Signed webhook/atomic confirmation and same-key initialization retries verified locally; reconciliation, distinct-attempt lifecycle, refunds and actual provider sandbox evidence outstanding                                                                                            |
+| Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Shipment checkout guards, reconciliation, single applied receipts, additional-money review and verified full-refund resolution pass local SQL/HTTP/fault tests; actual Stripe sandbox, partial/applied refunds, disputes, abuse budgets and deployed operations outstanding |
 | Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding            |
 | Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
 | Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0008 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
@@ -594,3 +594,74 @@ work. No live database, external account, frontend or deployment was modified.
 See docs/auth-abuse-protection.md for policy, rollout and limitations. Completion
 remains **7.5/10**: payment lifecycle, deployment, operational recovery and capacity
 evidence are still substantial blockers to the production-readiness objective.
+
+## Payment lifecycle and duplicate collection — 2026-11-03
+
+PR-06/07/09/10 acceptance: one guarded shipment checkout across different keys
+and payers; provider-confirmed closure before replacement; bounded durable
+reconciliation; one applied receipt with atomic notification capture; additional
+money retained for review; verified full-refund proof and operator audit fields.
+Migration 0009 installs shipment guards, receipt uniqueness, lifecycle/review
+columns, reconciliation indexes and transactional PostgreSQL functions. Scope is
+backend only. No external payment, production migration or deployment was run.
+
+Initialization locks the shipment before allocating a pending payment and guard.
+Unknown provider outcomes retain the guard. Cancellation navigation is not proof:
+the authenticated endpoint expires through Stripe and validates the resulting
+session. Complete/unpaid or processing intents remain reserved. Paid callbacks
+serialize on the shipment and either apply one receipt or record review without
+another fulfillment notification. A cancelled attempt's late successful receipt
+is retained; refunded review balances cannot be resurrected by event replay.
+
+The in-process sweep uses bounded PostgreSQL leases and the original immutable
+provider key/parameters only inside the 23-hour safe window. Missing parameters,
+changed credentials and older unknown outcomes require operator attachment of a
+verified provider session. Operator commands expose pending/review records and
+record a successful full Stripe refund only after reference, intent, currency,
+amount and session validation. Refund ID uniqueness and operator/timestamp fields
+preserve resolution history. Applied-payment refunds, partial refunds and disputes
+still need a separate policy and implementation.
+
+Existing pending Stripe attempts quarantine their shipment during migration;
+historical successes backfill one receipt and flag additional balances. Review
+balances keep their own guard until verified refund resolution. Drain older
+instances at cutover, rehearse migration locks/backfill duration and configure the
+two additional Checkout webhook event types described in docs/payments.md. No
+additional secret or infrastructure dependency is needed.
+
+Local Windows / Node 24.12.0 evidence completed on 2026-11-04 (Lagos): lint,
+strict type checks and Bun 1.3.12 build passed (841 modules, 3.35 MB). All 51 fast
+tests and 143 integration tests passed with zero failures, skips, todos or
+cancellations. The seven-file full integration run took 611.24 seconds with two
+files in parallel, ending 2026-11-03T23:01:05.897Z. Validated JUnit/JSON results
+are in reports/unit.* and reports/integration.*; local commit=null. Fourteen new
+payment cases and two migration cases extend the prior 127-test baseline.
+
+The final refund-atomicity change was then checked separately: one focused
+integration case passed and its retained reports/payment-refund.xml validates
+as one pass, no skips/failures. It injects a database trigger failure during guard
+release and proves refund status/audit fields roll back before successful retry.
+This targeted recheck covers the final change after the full suite; it is not an
+additional distinct test in the 143-case total.
+
+Tests use disposable PostgreSQL 17, Hono HTTP handlers, official SDK-signed
+webhook payloads and a loopback Stripe HTTP fixture. Cases include different-key/
+payer contention, cached closed checkout denial, cancellation/expiry, missed
+webhooks, lost create responses, provider retry cutoffs and verified operator
+attachment, late/competing receipts, cancelled shipments, processing and cancelled
+PaymentIntents, lease recovery, invalid provider bindings and full-refund proof.
+Existing real Redis/SMTP/socket suites also passed against the updated schema.
+
+An earlier full run hit the old ten-minute suite limit with no assertion failure
+reported before termination; its incomplete/failing evidence is retained in
+reports/integration-before-payment-timeout.*. The expanded suite remains bounded
+at fifteen minutes, two files in parallel, with a twenty-minute CI job allowance.
+Report validation still rejects missing/truncated, zero-test, failing or skipped
+results. Remote GitHub/Linux execution has not been performed.
+
+These are controlled provider contracts, not a Stripe sandbox, hosted Neon/Bun,
+production capacity or deployed timer/alerting validation. Frontend adoption must
+use `applied` rather than provider `paid` to acknowledge shipment payment success.
+Real provider/browser journeys, migration/backfill rehearsal, operators/alerts,
+deploy/CD, restore drills and load evidence remain release gates. Completion is
+**8/10**, a scoped planning estimate; production readiness remains unverified.

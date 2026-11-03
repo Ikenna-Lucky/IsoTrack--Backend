@@ -125,6 +125,34 @@ test("upgrade preserves existing accounts and installs later schema", async () =
   );
 });
 
+test("payment upgrade quarantines unknown attempts and preserves additional historic receipts", async () => {
+  await runMigrations(store, await copyJournal(9));
+  await query(`insert into users(id,email,password_hash,name,role) values('owner','owner@example.test','hash','Owner','business');
+    insert into businesses(id,user_id,business_name) values('biz','owner','Business');
+    insert into shipments(id,tracking_id,business_id,description,weight_kg,pickup_address,delivery_address,price_kobo)
+    values('shipment','IST-UPGRADE','biz','Box',1,'{}','{}',100);
+    insert into payments(id,shipment_id,provider_reference,amount_kobo,status,paid_at) values
+    ('first','shipment','REF-FIRST',100,'success','2026-01-01'),
+    ('second','shipment','REF-SECOND',100,'success','2026-01-02'),
+    ('unknown','shipment','REF-UNKNOWN',100,'pending',null);`);
+  assert.equal(await runMigrations(store, folder), 1);
+  assert.equal(
+    await query("select payment_id from shipment_payment_receipts"),
+    "first",
+  );
+  assert.equal(
+    await query("select payment_id is null from payment_checkout_guards"),
+    "t",
+  );
+  assert.equal(
+    await query(
+      "select status||':'||review_reason from payments where id='second'",
+    ),
+    "success:legacy_additional_payment",
+  );
+  assert.equal(await query("select count(*) from payments"), "3");
+});
+
 test("repairs historical settings omission without timestamp reordering", async () => {
   await runMigrations(store, folder);
   await query(

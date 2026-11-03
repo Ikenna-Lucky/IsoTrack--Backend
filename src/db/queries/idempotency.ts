@@ -104,21 +104,7 @@ export function prepareCheckoutStatement(
   actor: WriteActor,
   token: string,
 ) {
-  return sql`with owned as materialized (
-    select r.* from idempotency_requests r join shipments s on s.id=r.parameters->>'shipmentId'
-    join users u on u.id=r.user_id and u.is_active and u.role=${actor.role}::user_role
-    where r.id=${id} and r.user_id=${actor.userId} and r.operation='payments.initialize' and r.state='pending'
-      and r.lease_token=${token} and r.lease_until>statement_timestamp() and ${shipmentScope(actor)}
-      and r.created_at+interval '23 hours'>statement_timestamp() and not s.is_paid and s.status not in ('cancelled','failed')
-      and s.price_kobo=(r.parameters->>'amountKobo')::integer for update of r
-  ), inserted as (
-    insert into payments(id,shipment_id,provider_reference,provider,amount_kobo,status)
-    select resource_id,parameters->>'shipmentId',parameters->>'reference','stripe',(parameters->>'amountKobo')::integer,'pending'
-    from owned on conflict(id) do nothing returning *
-  ) select jsonb_build_object('id',id) as result from inserted
-    union all select jsonb_build_object('id',p.id) as result from payments p join owned on p.id=owned.resource_id
-    where p.provider='stripe' and p.provider_reference=owned.parameters->>'reference'
-      and p.amount_kobo=(owned.parameters->>'amountKobo')::integer and p.status='pending'`;
+  return sql`select result from (select prepare_payment_checkout(${id},${actor.userId},${actor.role},${token}) as result) prepared where result is not null`;
 }
 
 export function finishCheckoutStatement(
@@ -132,7 +118,7 @@ export function finishCheckoutStatement(
     select * from idempotency_requests where id=${id} and user_id=${userId} and operation='payments.initialize'
       and state='pending' and lease_token=${token} and lease_until>statement_timestamp() for update
   ), attached as (
-    update payments p set stripe_session_id=${sessionId},updated_at=statement_timestamp() from owned
+    update payments p set stripe_session_id=${sessionId},checkout_state=case when p.checkout_state='creating' then 'open' else p.checkout_state end,updated_at=statement_timestamp() from owned
     where p.id=owned.resource_id and p.provider='stripe' and p.provider_reference=owned.parameters->>'reference'
       and (p.stripe_session_id is null or p.stripe_session_id=${sessionId}) and p.status in ('pending','success') returning p.id
   ) update idempotency_requests r set response=${JSON.stringify(response)}::jsonb,state='completed',lease_token=null,lease_until=null

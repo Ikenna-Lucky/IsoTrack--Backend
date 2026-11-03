@@ -5,12 +5,49 @@ import Stripe from "stripe";
 export async function stripeFixture() {
   const requests = [];
   const sessions = new Map();
+  const intents = new Map();
+  const refunds = new Map();
   let drop = 0;
   let transform = (value) => value;
   let gate = null;
   let unlock;
   let sequence = 0;
   const server = createServer(async (request, response) => {
+    const path = new URL(request.url, "http://localhost").pathname;
+    if (
+      request.method === "GET" &&
+      (path.startsWith("/v1/payment_intents/") ||
+        path.startsWith("/v1/refunds/"))
+    ) {
+      const value = (path.startsWith("/v1/refunds/") ? refunds : intents).get(
+        path.split("/")[3],
+      );
+      response.writeHead(value ? 200 : 404, {
+        "content-type": "application/json",
+      });
+      response.end(
+        JSON.stringify(
+          value ?? { error: { message: "Missing fixture object" } },
+        ),
+      );
+      return;
+    }
+    if (request.method === "GET" || path.endsWith("/expire")) {
+      const id = path.split("/")[4];
+      const saved = [...sessions.values()].find(
+        (value) => value.session.id === id,
+      );
+      if (!saved) {
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: { message: "No such session" } }));
+        return;
+      }
+      if (path.endsWith("/expire") && saved.session.status === "open")
+        saved.session.status = "expired";
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(transform(saved.session)));
+      return;
+    }
     let body = "";
     for await (const chunk of request) body += chunk;
     const key = request.headers["idempotency-key"];
@@ -73,6 +110,9 @@ export async function stripeFixture() {
   return {
     requests,
     sessions,
+    intents,
+    refunds,
+    client: stripe,
     create: (params, key) =>
       stripe.checkout.sessions.create(params, { idempotencyKey: key }),
     dropNextResponse() {
@@ -95,6 +135,8 @@ export async function stripeFixture() {
     reset() {
       requests.length = 0;
       sessions.clear();
+      intents.clear();
+      refunds.clear();
       drop = 0;
       transform = (value) => value;
     },

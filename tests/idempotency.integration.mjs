@@ -4,6 +4,9 @@ import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { Hono } from "hono";
+import Stripe from "stripe";
+import { createStripeWebhookRouter } from "../src/routes/stripe-webhook.ts";
+import { parseStripeSession } from "../src/lib/stripe-payload.ts";
 import { HTTPException } from "hono/http-exception";
 import { SignJWT } from "jose";
 import { sql } from "drizzle-orm";
@@ -11,6 +14,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import { postgresFixture } from "./helpers/postgres.mjs";
 import { stripeFixture } from "./helpers/stripe.mjs";
 import { createIdempotentWrites } from "../src/services/idempotent-writes.ts";
+import { createPaymentLifecycle } from "../src/services/payment-lifecycle.ts";
 import {
   createShipmentCreationRouter,
   createCheckoutInitializationRouter,
@@ -50,6 +54,7 @@ before(async () => {
     "0005_auth_sessions",
     "0006_notification_outbox",
     "0007_request_idempotency",
+    "0009_payment_lifecycle",
   ]) {
     await postgres.query(
       sql.raw(
@@ -691,6 +696,10 @@ test("ownership and current price are rechecked before cached or retried checkou
   );
   provider.dropNextResponse();
   const priceKey = key("price-change");
+  await lifecycle().reconcile(
+    [...provider.sessions.values()][0].session.client_reference_id,
+    true,
+  );
   assert.equal(
     (await post(router, "/payments/initialize", { shipmentId }, priceKey))
       .status,
@@ -709,7 +718,6 @@ test("ownership and current price are rechecked before cached or retried checkou
 
 test("provider amount, currency, mode, metadata and redirect mismatches cannot be cached", async () => {
   const router = app();
-  const shipmentId = await shipment(router);
   const changes = [
     (s) => ({ ...s, amount_total: 200 }),
     (s) => ({ ...s, currency: "usd" }),
@@ -718,6 +726,7 @@ test("provider amount, currency, mode, metadata and redirect mismatches cannot b
     (s) => ({ ...s, url: "javascript:alert(1)" }),
   ];
   for (const [index, change] of changes.entries()) {
+    const shipmentId = await shipment(router, `bad-provider-${index}`);
     provider.transform(change);
     const response = await post(
       router,
@@ -739,5 +748,516 @@ test("provider amount, currency, mode, metadata and redirect mismatches cannot b
       sql`select count(*) from payments where stripe_session_id is not null`,
     ),
     "0",
+  );
+});
+
+function lifecycle(options = {}) {
+  return createPaymentLifecycle({
+    store,
+    client: provider.client,
+    providerContext: "test-provider",
+    liveMode: false,
+    ...options,
+  });
+}
+
+test("signed expiry webhook releases only its bound checkout and replays safely", async () => {
+  const first = await checkout();
+  first.session.status = "expired";
+  const secret = "whsec_payment_lifecycle_fixture";
+  const router = createStripeWebhookRouter({
+    secret,
+    expectedLiveMode: false,
+    parseSession: (session, time) =>
+      parseStripeSession(session, undefined, time),
+    confirm: async () => {
+      throw new Error("Legacy path");
+    },
+    observe: lifecycle().observe,
+  });
+  const body = JSON.stringify({
+    id: "evt_expired",
+    object: "event",
+    type: "checkout.session.expired",
+    created: Math.floor(Date.now() / 1000),
+    livemode: false,
+    data: { object: first.session },
+  });
+  const signature = Stripe.webhooks.generateTestHeaderString({
+    payload: body,
+    secret,
+  });
+  const send = (value = body) =>
+    router.request("/webhook", {
+      method: "POST",
+      body: value,
+      headers: { "stripe-signature": signature },
+    });
+  assert.equal((await send(body + " ")).status, 400);
+  assert.equal(
+    await postgres.query(sql`select count(*) from payment_checkout_guards`),
+    "1",
+  );
+  assert.equal((await send()).status, 200);
+  assert.equal((await send()).status, 200);
+  assert.equal(
+    await postgres.query(sql`select count(*) from payment_checkout_guards`),
+    "0",
+  );
+});
+async function checkout(label = "lifecycle") {
+  const router = app();
+  const shipmentId = await shipment(router, label);
+  const response = await post(
+    router,
+    "/payments/initialize",
+    { shipmentId },
+    key(label),
+  );
+  assert.equal(response.status, 200);
+  return {
+    router,
+    shipmentId,
+    ...(await response.json()).data,
+    session: [...provider.sessions.values()].at(-1).session,
+  };
+}
+
+test("different keys and payers race for one shipment checkout", async () => {
+  const router = app();
+  const shipmentId = await shipment(router);
+  const results = await Promise.all([
+    post(
+      router,
+      "/payments/initialize",
+      { shipmentId },
+      key("payer-a"),
+      "owner-a",
+    ),
+    post(
+      router,
+      "/payments/initialize",
+      { shipmentId },
+      key("payer-b"),
+      "customer-a",
+    ),
+  ]);
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+  const denied = results.find((r) => r.status === 409);
+  assert.equal((await denied.json()).error, "CHECKOUT_ALREADY_ACTIVE");
+  assert.equal(provider.sessions.size, 1);
+  assert.equal(
+    await postgres.query(sql`select count(*) from payment_checkout_guards`),
+    "1",
+  );
+});
+
+test("provider-confirmed cancellation closes the old key and permits a new checkout", async () => {
+  const first = await checkout();
+  await lifecycle().reconcile(first.reference, true);
+  assert.equal(
+    await postgres.query(sql`select status||':'||checkout_state from payments`),
+    "failed:expired",
+  );
+  assert.equal(
+    (
+      await post(
+        first.router,
+        "/payments/initialize",
+        { shipmentId: first.shipmentId },
+        key("lifecycle"),
+      )
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await post(
+        first.router,
+        "/payments/initialize",
+        { shipmentId: first.shipmentId },
+        key("replacement"),
+      )
+    ).status,
+    200,
+  );
+  assert.equal(provider.sessions.size, 2);
+});
+
+test("complete but unpaid checkout holds the guard after cancel and sweep", async () => {
+  const first = await checkout();
+  first.session.status = "complete";
+  await lifecycle().reconcile(first.reference, true);
+  await lifecycle().sweep();
+  assert.equal(
+    await postgres.query(sql`select checkout_state from payments`),
+    "processing",
+  );
+  assert.equal(
+    (
+      await post(
+        first.router,
+        "/payments/initialize",
+        { shipmentId: first.shipmentId },
+        key("second"),
+      )
+    ).status,
+    409,
+  );
+});
+
+test("missed paid webhook is recovered by the database-backed sweep exactly once", async () => {
+  const first = await checkout();
+  first.session.status = "complete";
+  first.session.payment_status = "paid";
+  assert.deepEqual(await lifecycle().sweep(), { attempted: 1, failed: 0 });
+  await lifecycle().observe(first.session);
+  assert.equal(
+    await postgres.query(sql`select count(*) from shipment_payment_receipts`),
+    "1",
+  );
+  assert.equal(
+    await postgres.query(
+      sql`select count(*) from notification_outbox where kind='payment_confirmed'`,
+    ),
+    "3",
+  );
+  assert.equal(
+    await postgres.query(
+      sql`select is_paid from shipments where id=${first.shipmentId}`,
+    ),
+    "t",
+  );
+});
+
+test("lost create response is recovered with the original provider key and body", async () => {
+  const router = app();
+  const shipmentId = await shipment(router);
+  provider.dropNextResponse();
+  assert.equal(
+    (await post(router, "/payments/initialize", { shipmentId }, key("lost")))
+      .status,
+    502,
+  );
+  assert.deepEqual(await lifecycle().sweep(), { attempted: 1, failed: 0 });
+  assert.equal(provider.sessions.size, 1);
+  assert.equal(
+    await postgres.query(
+      sql`select stripe_session_id is not null from payments`,
+    ),
+    "t",
+  );
+  assert.ok(
+    provider.requests.every(
+      (r) =>
+        r.body === provider.requests[0].body &&
+        r.key === provider.requests[0].key,
+    ),
+  );
+});
+
+test("expired provider retry window holds the shipment without another create", async () => {
+  const router = app();
+  const shipmentId = await shipment(router);
+  provider.dropNextResponse();
+  assert.equal(
+    (
+      await post(
+        router,
+        "/payments/initialize",
+        { shipmentId },
+        key("lost-old"),
+      )
+    ).status,
+    502,
+  );
+  await postgres.query(
+    sql`update idempotency_requests set created_at=now()-interval '24 hours' where operation='payments.initialize'`,
+  );
+  assert.deepEqual(await lifecycle().sweep(), { attempted: 1, failed: 1 });
+  assert.equal(provider.requests.length, 2);
+  assert.equal(
+    (
+      await post(
+        router,
+        "/payments/initialize",
+        { shipmentId },
+        key("unsafe-new"),
+      )
+    ).status,
+    409,
+  );
+  const recovered = [...provider.sessions.values()][0].session;
+  recovered.status = "complete";
+  recovered.payment_status = "paid";
+  await lifecycle().attach(recovered.client_reference_id, recovered.id);
+  assert.equal(provider.requests.length, 2);
+  assert.equal(
+    await postgres.query(sql`select count(*) from shipment_payment_receipts`),
+    "1",
+  );
+});
+
+test("a late payment after replacement is recorded for review without duplicate fulfillment", async () => {
+  const first = await checkout();
+  await lifecycle().reconcile(first.reference, true);
+  const next = await post(
+    first.router,
+    "/payments/initialize",
+    { shipmentId: first.shipmentId },
+    key("replacement"),
+  );
+  assert.equal(next.status, 200);
+  const second = [...provider.sessions.values()].at(-1).session;
+  second.status = "complete";
+  second.payment_status = "paid";
+  await lifecycle().observe(second);
+  first.session.status = "complete";
+  first.session.payment_status = "paid";
+  await lifecycle().observe(first.session);
+  await lifecycle().observe(first.session);
+  assert.equal(
+    await postgres.query(sql`select count(*) from shipment_payment_receipts`),
+    "1",
+  );
+  assert.equal(
+    await postgres.query(
+      sql`select checkout_state||':'||review_reason from payments where provider_reference=${first.reference}`,
+    ),
+    "review:additional_payment",
+  );
+  assert.equal(
+    await postgres.query(
+      sql`select count(*) from notification_outbox where kind='payment_confirmed'`,
+    ),
+    "3",
+  );
+});
+
+test("paid checkout on a cancelled shipment requires review and leaves shipment unpaid", async () => {
+  const first = await checkout();
+  await postgres.query(
+    sql`update shipments set status='cancelled' where id=${first.shipmentId}`,
+  );
+  first.session.status = "complete";
+  first.session.payment_status = "paid";
+  await lifecycle().observe(first.session);
+  assert.equal(
+    await postgres.query(
+      sql`select checkout_state||':'||review_reason from payments`,
+    ),
+    "review:shipment_not_payable",
+  );
+  assert.equal(
+    await postgres.query(
+      sql`select is_paid from shipments where id=${first.shipmentId}`,
+    ),
+    "f",
+  );
+  assert.equal(
+    await postgres.query(sql`select count(*) from shipment_payment_receipts`),
+    "0",
+  );
+});
+
+test("wrong provider mode or shipment cannot release a guard", async () => {
+  const first = await checkout();
+  await assert.rejects(
+    lifecycle().observe({
+      ...first.session,
+      status: "expired",
+      livemode: true,
+    }),
+  );
+  await assert.rejects(
+    lifecycle().observe({
+      ...first.session,
+      status: "expired",
+      metadata: { ...first.session.metadata, shipmentId: "foreign" },
+    }),
+  );
+  assert.equal(
+    await postgres.query(sql`select count(*) from payment_checkout_guards`),
+    "1",
+  );
+});
+
+test("expired Checkout with a processing PaymentIntent cannot release the shipment", async () => {
+  const first = await checkout();
+  first.session.status = "expired";
+  first.session.payment_intent = "pi_processing";
+  provider.intents.set("pi_processing", {
+    id: "pi_processing",
+    object: "payment_intent",
+    status: "processing",
+    amount: 100,
+    amount_received: 0,
+    currency: "ngn",
+    livemode: false,
+  });
+  await lifecycle().reconcile(first.reference);
+  assert.equal(
+    await postgres.query(sql`select count(*) from payment_checkout_guards`),
+    "1",
+  );
+  provider.intents.get("pi_processing").status = "canceled";
+  first.session.status = "complete";
+  await lifecycle().reconcile(first.reference);
+  assert.equal(
+    await postgres.query(sql`select count(*) from payment_checkout_guards`),
+    "0",
+  );
+});
+
+test("reconciliation leases survive provider errors and are reclaimed after expiry", async () => {
+  const first = await checkout();
+  await postgres.query(
+    sql`update payments set reconcile_token='dead-worker',reconcile_until=now()+interval '1 hour'`,
+  );
+  assert.deepEqual(await lifecycle().sweep(), { attempted: 0, failed: 0 });
+  await postgres.query(
+    sql`update payments set reconcile_until=now()-interval '1 second'`,
+  );
+  provider.transform((s) => ({ ...s, amount_total: 999 }));
+  assert.deepEqual(await lifecycle().sweep(), { attempted: 1, failed: 1 });
+  assert.equal(
+    await postgres.query(
+      sql`select reconcile_token is null and reconcile_until is null from payments`,
+    ),
+    "t",
+  );
+  assert.equal(
+    await postgres.query(sql`select count(*) from payment_checkout_guards`),
+    "1",
+  );
+  provider.transform((s) => s);
+  first.session.status = "expired";
+  await postgres.query(sql`update payments set reconcile_after=now()`);
+  assert.deepEqual(await lifecycle().sweep(), { attempted: 1, failed: 0 });
+  assert.equal(
+    await postgres.query(sql`select count(*) from payment_checkout_guards`),
+    "0",
+  );
+});
+
+test("review resolution requires a successful full Stripe refund of the matching intent", async () => {
+  const first = await checkout();
+  first.session.payment_intent = "pi_review";
+  await postgres.query(
+    sql`update shipments set status='cancelled' where id=${first.shipmentId}`,
+  );
+  first.session.status = "complete";
+  first.session.payment_status = "paid";
+  await lifecycle().observe(first.session);
+  assert.equal(
+    await postgres.query(sql`select count(*) from payment_checkout_guards`),
+    "1",
+  );
+  const refund = {
+    id: "re_review",
+    object: "refund",
+    amount: 100,
+    currency: "ngn",
+    status: "pending",
+    payment_intent: "pi_review",
+  };
+  provider.refunds.set(refund.id, refund);
+  await assert.rejects(
+    lifecycle().recordRefund(first.reference, refund.id, "portfolio-operator"),
+  );
+  refund.status = "succeeded";
+  refund.amount = 99;
+  await assert.rejects(
+    lifecycle().recordRefund(first.reference, refund.id, "portfolio-operator"),
+  );
+  refund.amount = 100;
+  refund.payment_intent = "pi_foreign";
+  await assert.rejects(
+    lifecycle().recordRefund(first.reference, refund.id, "portfolio-operator"),
+  );
+  refund.payment_intent = "pi_review";
+  await postgres.query(
+    sql.raw(`create function reject_review_release() returns trigger language plpgsql as $$
+    begin raise exception 'forced guard release failure'; end $$;
+    create trigger reject_review_release before delete on payment_checkout_guards for each row execute function reject_review_release();`),
+  );
+  await assert.rejects(
+    lifecycle().recordRefund(first.reference, refund.id, "portfolio-operator"),
+  );
+  assert.equal(
+    await postgres.query(
+      sql`select status='pending' and refund_id is null from payments`,
+    ),
+    "t",
+  );
+  await postgres.query(
+    sql.raw(
+      "drop trigger reject_review_release on payment_checkout_guards; drop function reject_review_release()",
+    ),
+  );
+  await lifecycle().recordRefund(
+    first.reference,
+    refund.id,
+    "portfolio-operator",
+  );
+  assert.equal(
+    await postgres.query(sql`select count(*) from payment_checkout_guards`),
+    "0",
+  );
+  await assert.rejects(
+    lifecycle().recordRefund(first.reference, refund.id, "another-operator"),
+  );
+  assert.equal(
+    await postgres.query(
+      sql`select status||':'||refund_id||':'||refund_recorded_by from payments`,
+    ),
+    "refunded:re_review:portfolio-operator",
+  );
+  await lifecycle().observe(first.session);
+  assert.equal(
+    await postgres.query(sql`select status from payments`),
+    "refunded",
+  );
+  assert.equal(
+    await postgres.query(sql`select count(*) from shipment_payment_receipts`),
+    "0",
+  );
+});
+
+test("concurrent successful receipts apply one payment and preserve the other for review", async () => {
+  const first = await checkout();
+  // Represents an older/external attempt that existed before the guard rollout.
+  await postgres.query(
+    sql`insert into payments(id,shipment_id,provider_reference,amount_kobo) values('historic-attempt',${first.shipmentId},'HISTORIC-REFERENCE',100)`,
+  );
+  const other = {
+    ...first.session,
+    id: "cs_historic",
+    client_reference_id: "HISTORIC-REFERENCE",
+    metadata: { reference: "HISTORIC-REFERENCE", shipmentId: first.shipmentId },
+    status: "complete",
+    payment_status: "paid",
+  };
+  first.session.status = "complete";
+  first.session.payment_status = "paid";
+  await Promise.all([
+    lifecycle().observe(first.session),
+    lifecycle().observe(other),
+  ]);
+  assert.equal(
+    await postgres.query(sql`select count(*) from shipment_payment_receipts`),
+    "1",
+  );
+  assert.equal(
+    await postgres.query(
+      sql`select count(*) from payments where checkout_state='review' and review_reason='additional_payment' and received_at is not null`,
+    ),
+    "1",
+  );
+  assert.equal(
+    await postgres.query(
+      sql`select count(*) from notification_outbox where kind='payment_confirmed'`,
+    ),
+    "3",
   );
 });

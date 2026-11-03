@@ -20,6 +20,7 @@ import { registerSocketHandlers } from "@/socket/handlers";
 import { trackingDependencies } from "@/socket/dependencies";
 import { trackingServerOptions } from "@/socket/server-options";
 import { startNotificationWorker } from "@/workers/notification.worker";
+import { startPaymentReconciliation } from "@/services/payments";
 import { env } from "@/lib/env";
 
 // Hono app
@@ -29,7 +30,7 @@ const app = new Hono();
 app.use("*", logger());
 app.use("*", prettyJSON());
 app.use("*", secureHeaders());
-app.use("*",apiCors(env.FRONTEND_URL));
+app.use("*", apiCors(env.FRONTEND_URL));
 
 // Health check
 app.get("/health", (c) => {
@@ -121,6 +122,7 @@ const io = new Server(httpServer, trackingServerOptions(env.FRONTEND_URL));
 
 registerSocketHandlers(io, trackingDependencies);
 const notificationRuntime = startNotificationWorker();
+const paymentRuntime = startPaymentReconciliation();
 
 let shuttingDown = false;
 function shutdown() {
@@ -132,6 +134,7 @@ function shutdown() {
     await Promise.all([
       io.close(),
       notificationRuntime.close(),
+      paymentRuntime.close(),
     ]);
     clearTimeout(deadline);
   };

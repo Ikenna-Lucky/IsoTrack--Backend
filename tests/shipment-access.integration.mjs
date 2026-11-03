@@ -1024,6 +1024,29 @@ test("Stripe migration preserves existing references as legacy and defaults new 
   );
 });
 
+test("payment lifecycle migration installs settlement and checkout invariants", () => {
+  query(
+    inMigrationSchema(
+      sql.raw(
+        readFileSync(
+          new URL("../drizzle/0007_request_idempotency.sql", import.meta.url),
+          "utf8",
+        ),
+      ),
+    ),
+  );
+  query(
+    inMigrationSchema(
+      sql.raw(
+        readFileSync(
+          new URL("../drizzle/0009_payment_lifecycle.sql", import.meta.url),
+          "utf8",
+        ),
+      ),
+    ),
+  );
+});
+
 function paymentFixture(id) {
   shipmentFixture(id);
   query(

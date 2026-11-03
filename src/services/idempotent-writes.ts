@@ -2,6 +2,7 @@ import { nanoid } from "nanoid";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type Stripe from "stripe";
+import { sql } from "drizzle-orm";
 import {
   WriteError,
   requireIdempotencyKey,
@@ -276,8 +277,22 @@ export function createIdempotentWrites(deps: Dependencies) {
           "RECONCILIATION_REQUIRED",
           "Payment configuration changed; reconcile the original attempt",
         );
-      if (request.response)
+      if (request.response) {
+        const [payment] = await store.execute(
+          sql`select jsonb_build_object('active',status='pending' and checkout_state in ('creating','open')) as result from payments where id=${request.resourceId}`,
+        );
+        if (
+          !shipment.payable ||
+          !payment?.active ||
+          shipment.priceKobo !== parameters.amountKobo
+        )
+          throw new WriteError(
+            409,
+            "CHECKOUT_CLOSED",
+            "This checkout is closed; verify the payment before starting another attempt",
+          );
         return { status: 200, body: request.response, replayed: true };
+      }
       if (!request.providerSafe)
         throw new WriteError(
           409,
@@ -293,13 +308,16 @@ export function createIdempotentWrites(deps: Dependencies) {
         );
       const token = await claim(request, actor);
       return run(request, actor, token, async () => {
-        if (
-          !(
-            await store.execute(
-              prepareCheckoutStatement(request.id, actor, token),
-            )
-          ).length
-        )
+        const [prepared] = await store.execute(
+          prepareCheckoutStatement(request.id, actor, token),
+        );
+        if (prepared?.blocked)
+          throw new WriteError(
+            409,
+            "CHECKOUT_ALREADY_ACTIVE",
+            "A checkout already exists for this shipment; verify or cancel it before trying again",
+          );
+        if (!prepared)
           throw new WriteError(
             409,
             "NOT_PAYABLE",

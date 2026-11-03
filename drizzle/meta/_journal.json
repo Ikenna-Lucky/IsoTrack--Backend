@@ -64,6 +64,13 @@
       "when": 1793664000004,
       "tag": "0008_account_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793664000005,
+      "tag": "0009_payment_lifecycle",
+      "breakpoints": true
     }
   ]
 }

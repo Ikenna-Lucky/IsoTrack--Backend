@@ -1,4 +1,5 @@
 import { stripe } from "@/lib/stripe";
+import { paymentLifecycle } from "@/services/payments";
 import { writes } from "@/services/writes";
 import { createCheckoutInitializationRouter } from "./idempotent-writes";
 import type Stripe from "stripe";
@@ -26,11 +27,12 @@ async function confirmPayment(payment: SuccessfulPayment) {
 paymentsRouter.route(
   "/",
   createStripeWebhookRouter({
-    secret: env.STRIPE_WEBHOOK_SECRET,
+    secret: paymentLifecycle ? env.STRIPE_WEBHOOK_SECRET : undefined,
     expectedLiveMode: /^(sk|rk)_live_/.test(env.STRIPE_SECRET_KEY ?? ""),
     parseSession: (session, paidAt) =>
       parseStripeSession(session, undefined, paidAt),
     confirm: confirmPayment,
+    observe: (session, paidAt) => paymentLifecycle!.observe(session, paidAt),
   }),
 );
 paymentsRouter.use("*", authenticate, requireRole("business", "customer"));
@@ -76,14 +78,64 @@ paymentsRouter.get("/verify/:reference", async (c) => {
     session.livemode !== /^(sk|rk)_live_/.test(env.STRIPE_SECRET_KEY ?? "")
   )
     return error(c, "Invalid checkout response", 502);
-  if (verified.charge && !(await confirmPayment(verified.charge)))
-    return error(c, "Payment details do not match", 409);
+  await paymentLifecycle!.observe(session);
+  const [current] = await db
+    .select()
+    .from(payments)
+    .where(eq(payments.id, payment.id))
+    .limit(1);
   return success(c, {
     data: {
       paid: verified.paid,
       reference,
       channel: verified.channel,
       status: verified.status,
+      applied: current?.status === "success" && !current.reviewReason,
+      checkoutState: current?.checkoutState,
+      requiresReview:
+        Boolean(current?.reviewReason) && current?.status !== "refunded",
     },
   });
+});
+
+paymentsRouter.post("/:reference/cancel", async (c) => {
+  const reference = c.req.param("reference");
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(
+      and(eq(payments.reference, reference), eq(payments.provider, "stripe")),
+    )
+    .limit(1);
+  if (
+    !payment ||
+    !(await findShipmentById(payment.shipmentId, {
+      userId: c.get("userId"),
+      role: c.get("userRole"),
+    }))
+  )
+    return error(c, "Payment not found", 404);
+  if (!paymentLifecycle) return error(c, "Payments unavailable", 503);
+  try {
+    await paymentLifecycle.reconcile(reference, true);
+    const [current] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.id, payment.id))
+      .limit(1);
+    return success(c, {
+      data: {
+        reference,
+        checkoutState: current?.checkoutState,
+        requiresReview:
+          Boolean(current?.reviewReason) && current?.status !== "refunded",
+      },
+    });
+  } catch {
+    return error(
+      c,
+      "Cancellation could not be confirmed; verify the original payment before retrying",
+      502,
+    );
+  }
 });

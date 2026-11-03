@@ -36,6 +36,7 @@ export const idempotencyRequests = pgTable(
   },
   (t) => [
     unique("idempotency_requests_scope").on(t.userId, t.operation, t.keyHash),
+    index("idempotency_requests_resource_idx").on(t.resourceId),
     index("idempotency_requests_cleanup_idx")
       .on(t.createdAt)
       .where(sql`${t.scrubbedAt} is null`),

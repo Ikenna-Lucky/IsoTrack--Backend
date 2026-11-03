@@ -80,6 +80,8 @@ before(async () => {
     "0004_stripe_checkout",
     "0005_auth_sessions",
     "0006_notification_outbox",
+    "0007_request_idempotency",
+    "0009_payment_lifecycle",
   ]) {
     await postgres.query(
       sql.raw(
