@@ -59,3 +59,13 @@ sent and application credentials are not loaded. See docs/notifications.md.
 The report runner allows seven minutes for all integration files together. Docker
 must have capacity for the isolated services running in parallel. If interrupted,
 inspect only the exact test-container prefixes above before manual cleanup.
+
+The idempotency suite creates `isotrack-idempotency-test-*` PostgreSQL and a loopback
+HTTP Stripe fixture. It uses production command handlers/service/SQL, real JWT and
+session checks and the official Stripe SDK. It covers concurrent/replayed/mismatched
+keys, scope, transaction rollback, injected lost database acknowledgements, lease
+fencing, retention/expiry, checkout parameter preservation and accepted-but-lost
+provider responses across service instances. The fixture accounts for the SDK's
+automatic first connection-reset retry. It does not contact Stripe or establish
+provider sandbox compatibility; see docs/idempotency.md for boundaries and rollout.
+Fast tests include canonicalization, validation, CORS and error boundaries.

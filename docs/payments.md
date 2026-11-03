@@ -48,9 +48,11 @@ Historic migration SQL and snapshots retain the former provider names because
 rewriting applied migrations would corrupt the migration history. No live migration
 was performed during development.
 
-- `POST /payments/initialize` authorizes the business/customer's shipment, saves a
-  pending reference, creates Checkout with a Stripe idempotency key, and saves the
-  session ID. Returns `reference`, `authorizationUrl`, `sessionId`, `amountKobo`.
+- `POST /payments/initialize` requires `Idempotency-Key`, authorizes the business/
+  customer's shipment, saves one durable pending reference/parameter set per key,
+  creates Checkout with a stable Stripe key and atomically saves the session/result.
+  Returns `reference`, `authorizationUrl`, `sessionId`, `amountKobo`. Apply migration
+  0007 as well; see docs/idempotency.md for retry, expiry and client requirements.
 - `GET /payments/verify/:reference` checks ownership, retrieves the stored Checkout
   Session using the server key, and confirms only paid, complete, correctly bound
   sessions. A redirect parameter alone never proves payment.
@@ -72,12 +74,13 @@ atomic writes, concurrency, migration preservation and replay. Stripe network ca
 actual Checkout UI, redirects in a browser and dashboard event delivery still need
 a sandbox run after the keys are configured. Type checks do not prove those flows.
 
-Stripe's idempotency key currently protects retries of one SDK request. Repeated
-calls to initialization create new local references; application-level idempotency,
-reconciliation, refunds/disputes, event/audit history, abuse controls and operational
-alerts remain release work. Pending sessions after provider/storage failures need
-reconciliation. Private-fleet settlement recipients/Stripe Connect remain a product
-decision, not an implemented marketplace payout system.
+Application idempotency now protects retries of the same user's operation/key,
+including interrupted SDK calls. Distinct keys/users can still create distinct
+attempts; this is not global double-charge prevention. Reconciliation, refunds/
+disputes, event/audit history, abuse controls and operational alerts remain release
+work. Pending provider outcomes require reconciliation once the safe retry window
+ends or credentials change. Private-fleet settlement recipients/Stripe Connect
+remain a product decision, not an implemented marketplace payout system.
 
 Sources: [Checkout fulfillment](https://docs.stripe.com/checkout/fulfillment.md?ui=full-page),
 [webhook signature verification](https://docs.stripe.com/events/manage-webhook-endpoints#signature-errors),

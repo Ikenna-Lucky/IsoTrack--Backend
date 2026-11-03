@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { cors } from "hono/cors";
+import { apiCors } from "@/lib/api-cors";
 import { logger } from "hono/logger";
 import { prettyJSON } from "hono/pretty-json";
 import { secureHeaders } from "hono/secure-headers";
@@ -29,16 +29,7 @@ const app = new Hono();
 app.use("*", logger());
 app.use("*", prettyJSON());
 app.use("*", secureHeaders());
-app.use(
-  "*",
-  cors({
-    origin: [env.FRONTEND_URL],
-    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
-    maxAge: 86400,
-  }),
-);
+app.use("*",apiCors(env.FRONTEND_URL));
 
 // Health check
 app.get("/health", (c) => {

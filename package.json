@@ -17,6 +17,7 @@
     "notifications:status": "bun run src/db/notification-operations.ts status",
     "notifications:replay": "bun run src/db/notification-operations.ts replay",
     "notifications:purge": "bun run src/db/notification-operations.ts purge",
+    "idempotency:scrub": "bun run src/db/scrub-idempotency.ts",
     "db:push": "drizzle-kit push",
     "db:seed": "bun run src/db/seed.ts",
     "db:studio": "drizzle-kit studio"

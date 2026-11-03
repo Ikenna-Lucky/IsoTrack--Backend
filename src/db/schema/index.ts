@@ -11,4 +11,5 @@ export * from "./shipment-events";
 export * from "./notifications";
 export * from "./notification-outbox";
 export * from "./payments";
+export * from "./idempotency-requests";
 export * from "./driver-invitations";

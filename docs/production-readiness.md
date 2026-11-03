@@ -8,11 +8,11 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **6.5/10** after the notification outbox build
-(2026-11-03), up from the prior 6/10 assessment. Update this estimate after each
+Current completion estimate: **7/10** after request idempotency
+(2026-11-03), up from the prior 6.5/10 assessment. Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
-critical journeys, identity recovery, request idempotency, payment lifecycle,
+critical journeys, identity recovery, remaining write idempotency/versioning, payment lifecycle,
 observability, load testing and recovery evidence remain substantial work.
 
 ## Release blockers and work order
@@ -24,11 +24,11 @@ observability, load testing and recovery evidence remain substantial work.
 | Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding |
 | Sessions | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification | Server sessions, strict single-use rotation, replay/logout revocation, password/deactivation invalidation and PostgreSQL races verified locally; full login/password HTTP journeys, recovery, verification, browser coordination and deployed evidence outstanding |
-| Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Creation/transitions and history are atomic; status-conflict, rollback and assignment-race tests pass; durable idempotency, versioning, proof and returns outstanding |
-| Payments | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence | Public signed webhook and atomic repeat-safe confirmation tested; initialization idempotency, reconciliation, refunds and provider sandbox evidence outstanding |
+| Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Creation/transitions/history are atomic; creation idempotency, rollback/replay and assignment races verified locally; remaining command idempotency/versioning, proof and returns outstanding |
+| Payments | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence | Signed webhook/atomic confirmation and same-key initialization retries verified locally; reconciliation, distinct-attempt lifecycle, refunds and actual provider sandbox evidence outstanding |
 | Tracking | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding |
 | Notifications | Durable dispatch, preferences enforced, bounded retries and replay, valid links | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
-| Migrations | Fresh install and supported upgrade tested; business preference columns included; chronological journal repaired safely | Failed inspection |
+| Migrations | Fresh install and supported upgrade tested; business preference columns included; chronological journal repaired safely | SQL migrations through 0007 exercised in PostgreSQL fixtures, including historical settings repair; legacy fleet FK reconciliation/validation, actual migrator and deployed upgrade evidence outstanding |
 | Performance | Agreed peak workload, latency/error targets, representative data, sustained and overload tests | Unverified |
 | Delivery | Versioned artifact promoted through staging, deployment checks and tested rollback | Planned |
 | Operations | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks | Planned |
@@ -402,3 +402,52 @@ minutes to accommodate the added real services. See docs/notifications.md.
 
 Completion estimate after this build: **6.5/10** toward the agreed production-ready
 backend, subject to the outstanding gates above and the release register.
+
+## Request idempotency — 2026-11-03
+
+Shipment creation and checkout initialization now require a client Idempotency-Key.
+Durable reservations bind the authenticated user/operation/key to normalized input,
+original resource IDs and response snapshots. Unique scope and fenced 60-second
+leases handle concurrent attempts and interrupted claims. Shipment/history/outbox
+and the saved creation result commit atomically. Replays return the original status
+and body after current ownership checks, without repeating those effects.
+
+Checkout initialization retains one payment reference and immutable Stripe request
+parameters/key across service instances. Session attachment and response storage
+commit together. Amount/currency/mode/reference/shipment/redirect validation precedes
+completion. Unknown provider outcomes can retry within a conservative 23-hour
+window; pending attempts beyond that window or with a changed credential binding
+require reconciliation. Application keys expire after 24 hours and cannot be reused.
+Sensitive payloads can be scrubbed after 30 days while compact tombstones remain.
+Distinct keys/users can still create distinct attempts; global payment lifecycle
+and duplicate-charge protection are not claimed by this mechanism.
+
+Local Windows evidence: lint, types, Bun build and 43 fast tests passed; all 92
+integration tests passed with zero failures/skips/todos/cancellations. Validated
+JUnit/JSON reports remain in reports/unit.* and reports/integration.*. Fifteen new
+cases apply migration 0007 in disposable PostgreSQL and use real Hono handlers,
+signed JWT/session authentication, production service/SQL and the official Stripe
+SDK against a loopback HTTP fixture. They verify replay, key scope/conflicts,
+concurrency, outbox rollback, lost claim/commit acknowledgements, lease fencing,
+expiry/scrubbing, checkout replay/contention, accepted-but-lost provider responses,
+immutable parameters across service instances, attachment failure/lost response,
+safe retry/configuration cutoffs, current ownership/price and invalid provider data.
+
+The provider fixture drops both the original and SDK connection-reset retry
+responses, then verifies recovery with one provider session and unchanged key/body.
+Database transport faults and accelerated lease timestamps are explicit injections,
+not a claim of killed-process or actual Stripe sandbox coverage. Fast tests cover
+normalization/canonicalization, key validation, CORS and input/internal error
+boundaries. The current complete local suite also includes PostgreSQL/Redis/BullMQ/
+Socket.IO/SMTP tests from prior batches. Remote Actions has not run.
+
+Rollout requires migration 0007, coordinated client header adoption and stopping
+old write-serving instances. No frontend files, new secrets, production database or
+external provider account were changed. Remaining work includes automatic payment
+reconciliation, lifecycle control across distinct attempts, other command versioning,
+idempotency-table growth/cardinality controls, scheduling of scrubbing, deployed
+Neon/Bun/browser/provider verification and capacity/cost evidence. See
+docs/idempotency.md for contracts, expiry, credential rotation and retention limits.
+
+Completion estimate after this build: **7/10** toward the agreed production-ready
+backend. This remains a planning estimate, not release approval.

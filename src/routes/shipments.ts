@@ -1,3 +1,5 @@
+import { createShipmentCreationRouter } from "./idempotent-writes";
+import { writes } from "@/services/writes";
 import { shipmentTransitions } from "@/db/queries/shipment-access";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
@@ -10,39 +12,16 @@ import {
   findShipmentsByBusiness,
   findShipmentsByDriver,
   findShipmentsByCustomer,
-  createShipment,
   transitionShipment,
 } from "@/db/queries/shipments";
 import { db } from "@/db";
 import { businesses, drivers } from "@/db/schema";
-import { findUserByEmail } from "@/db/queries/users";
+
 import { success, paginated, error } from "@/lib/response";
-
-
-
 
 export const shipmentsRouter = new Hono();
 
 const VALID_TRANSITIONS = shipmentTransitions;
-
-const createShipmentSchema = z.object({
-  description: z.string().min(1),
-  weightKg: z.number().positive(),
-  pickupAddress: z.object({
-    street: z.string(),
-    city: z.string(),
-    state: z.string().default("Lagos"),
-  }),
-  deliveryAddress: z.object({
-    street: z.string(),
-    city: z.string(),
-    state: z.string().default("Lagos"),
-  }),
-  customerId: z.string().optional(),
-  customerEmail: z.string().email().optional(),
-  scheduledPickup: z.string().datetime().optional(),
-  priceKobo: z.number().int().positive(),
-});
 
 const updateStatusSchema = z.object({
   status: z.enum([
@@ -101,60 +80,16 @@ shipmentsRouter.get("/", async (c) => {
   return error(c, "Unauthorized role", 403);
 });
 
-shipmentsRouter.post(
+shipmentsRouter.route(
   "/",
-  requireRole("business"),
-  zValidator("json", createShipmentSchema),
-  async (c) => {
-    const userId = c.get("userId");
-    const body = c.req.valid("json");
-
-    const [biz] = await db
-      .select({ id: businesses.id })
-      .from(businesses)
-      .where(eq(businesses.userId, userId))
-      .limit(1);
-    if (!biz) return error(c, "Business profile not found", 404);
-
-    // ── Resolve customer by email if provided ─────────────────────────────────
-    // Businesses know their customer's email; we look them up and link the
-    // account so the shipment appears on the customer's dashboard automatically.
-    let resolvedCustomerId: string | null = body.customerId ?? null;
-    if (!resolvedCustomerId && body.customerEmail) {
-      const customerUser = await findUserByEmail(body.customerEmail);
-      if (customerUser && customerUser.role === "customer") {
-        resolvedCustomerId = customerUser.id;
-      }
-      // If the email doesn't match a registered customer account we silently
-      // skip — the shipment is still created; the customer can track by ID.
-    }
-
-    const trackingId = `IST-${nanoid(8).toUpperCase()}`;
-
-    const shipment = await createShipment({
-      id: nanoid(),
-      trackingId,
-      businessId: biz.id,
-      customerId: resolvedCustomerId,
-      description: body.description,
-      weightKg: body.weightKg,
-      pickupAddress: body.pickupAddress,
-      deliveryAddress: body.deliveryAddress,
-      priceKobo: body.priceKobo,
-      scheduledPickup: body.scheduledPickup
-        ? new Date(body.scheduledPickup)
-        : null,
-    });
-
-    return c.json(
-      { success: true, data: shipment, message: "Shipment created" },
-      201,
-    );
-  },
+  createShipmentCreationRouter({ authorize: requireRole("business"), writes }),
 );
 
 shipmentsRouter.get("/:id", async (c) => {
-  const shipment = await findShipmentById(c.req.param("id"), { userId: c.get("userId"), role: c.get("userRole") });
+  const shipment = await findShipmentById(c.req.param("id"), {
+    userId: c.get("userId"),
+    role: c.get("userRole"),
+  });
   if (!shipment) return error(c, "Shipment not found", 404);
   return success(c, { data: shipment });
 });
@@ -167,13 +102,23 @@ shipmentsRouter.patch(
     const id = c.req.param("id")!;
     const { status: newStatus, note } = c.req.valid("json");
 
-    const shipment = await findShipmentById(id, { userId: c.get("userId"), role: c.get("userRole") });
+    const shipment = await findShipmentById(id, {
+      userId: c.get("userId"),
+      role: c.get("userRole"),
+    });
     if (!shipment) return error(c, "Shipment not found", 404);
 
     if (newStatus === "assigned") {
-      return error(c, "Use the driver assignment endpoint to assign a shipment", 422);
+      return error(
+        c,
+        "Use the driver assignment endpoint to assign a shipment",
+        422,
+      );
     }
-    if (c.get("userRole") === "driver" && ["pending", "cancelled"].includes(newStatus)) {
+    if (
+      c.get("userRole") === "driver" &&
+      ["pending", "cancelled"].includes(newStatus)
+    ) {
       return error(c, "Only the business can retry or cancel a shipment", 403);
     }
 
@@ -186,11 +131,18 @@ shipmentsRouter.patch(
       );
     }
 
-    const updated = await transitionShipment({ userId: c.get("userId"), role: c.get("userRole") }, {
-      shipmentId: id, expectedStatus: shipment.status, status: newStatus,
-      eventId: nanoid(), message: note ?? "",
-    });
-    if (!updated) return error(c, "Shipment changed; reload before trying again", 409);
+    const updated = await transitionShipment(
+      { userId: c.get("userId"), role: c.get("userRole") },
+      {
+        shipmentId: id,
+        expectedStatus: shipment.status,
+        status: newStatus,
+        eventId: nanoid(),
+        message: note ?? "",
+      },
+    );
+    if (!updated)
+      return error(c, "Shipment changed; reload before trying again", 409);
 
     return success(c, { data: updated, message: "Status updated" });
   },
@@ -204,7 +156,10 @@ shipmentsRouter.patch(
     const id = c.req.param("id")!;
     const { driverId } = c.req.valid("json");
 
-    const shipment = await findShipmentById(id, { userId: c.get("userId"), role: c.get("userRole") });
+    const shipment = await findShipmentById(id, {
+      userId: c.get("userId"),
+      role: c.get("userRole"),
+    });
     if (!shipment) return error(c, "Shipment not found", 404);
     if (shipment.status !== "pending")
       return error(c, "Only pending shipments can be assigned", 422);
@@ -212,22 +167,42 @@ shipmentsRouter.patch(
     const [driver] = await db
       .select()
       .from(drivers)
-      .where(and(eq(drivers.id, driverId), eq(drivers.businessId, shipment.businessId)))
+      .where(
+        and(
+          eq(drivers.id, driverId),
+          eq(drivers.businessId, shipment.businessId),
+        ),
+      )
       .limit(1);
     if (!driver) return error(c, "Driver not found", 404);
 
-    const updated = await transitionShipment({ userId: c.get("userId"), role: c.get("userRole") }, {
-      shipmentId: id, expectedStatus: "pending", status: "assigned", driverId,
-      eventId: nanoid(), message: `Assigned to driver ${driverId}`,
-    });
-    if (!updated) return error(c, "Shipment or driver changed; reload before trying again", 409);
+    const updated = await transitionShipment(
+      { userId: c.get("userId"), role: c.get("userRole") },
+      {
+        shipmentId: id,
+        expectedStatus: "pending",
+        status: "assigned",
+        driverId,
+        eventId: nanoid(),
+        message: `Assigned to driver ${driverId}`,
+      },
+    );
+    if (!updated)
+      return error(
+        c,
+        "Shipment or driver changed; reload before trying again",
+        409,
+      );
 
     return success(c, { data: updated, message: "Driver assigned" });
   },
 );
 
 shipmentsRouter.delete("/:id", requireRole("business"), async (c) => {
-  const shipment = await findShipmentById(c.req.param("id")!, { userId: c.get("userId"), role: c.get("userRole") });
+  const shipment = await findShipmentById(c.req.param("id")!, {
+    userId: c.get("userId"),
+    role: c.get("userRole"),
+  });
   if (!shipment) return error(c, "Shipment not found", 404);
 
   const allowed = VALID_TRANSITIONS[shipment.status] ?? [];
@@ -239,10 +214,17 @@ shipmentsRouter.delete("/:id", requireRole("business"), async (c) => {
     );
   }
 
-  const updated = await transitionShipment({ userId: c.get("userId"), role: c.get("userRole") }, {
-    shipmentId: shipment.id, expectedStatus: shipment.status, status: "cancelled",
-    eventId: nanoid(), message: "Shipment cancelled by business",
-  });
-  if (!updated) return error(c, "Shipment changed; reload before trying again", 409);
+  const updated = await transitionShipment(
+    { userId: c.get("userId"), role: c.get("userRole") },
+    {
+      shipmentId: shipment.id,
+      expectedStatus: shipment.status,
+      status: "cancelled",
+      eventId: nanoid(),
+      message: "Shipment cancelled by business",
+    },
+  );
+  if (!updated)
+    return error(c, "Shipment changed; reload before trying again", 409);
   return success(c, { data: null, message: "Shipment cancelled" });
 });
