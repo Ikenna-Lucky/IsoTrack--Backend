@@ -69,3 +69,11 @@ provider responses across service instances. The fixture accounts for the SDK's
 automatic first connection-reset retry. It does not contact Stripe or establish
 provider sandbox compatibility; see docs/idempotency.md for boundaries and rollout.
 Fast tests include canonicalization, validation, CORS and error boundaries.
+
+The migration suite creates `isotrack-migration-test-*` PostgreSQL and runs the
+production migration core with all checked-in SQL files. It covers fresh install,
+existing-account upgrade, historical settings omission, atomic rollback,
+concurrent plans, history tampering/gaps and a lost commit acknowledgement.
+Temporary journals are isolated under the system temp directory and cleaned up.
+The psql adapter verifies PostgreSQL semantics; actual Neon HTTP and the Bun CLI
+entrypoint against a hosted database remain unverified. See docs/migrations.md.

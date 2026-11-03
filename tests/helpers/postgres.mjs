@@ -30,7 +30,17 @@ export function postgresFixture(options = {}) {
       const deadline = Date.now() + 30_000;
       for (;;) {
         try {
-          await docker(["exec", container, "pg_isready", "-U", "postgres"]);
+          // The image's temporary initialization server accepts Unix sockets,
+          // then exits. TCP is enabled only on the final server.
+          await docker([
+            "exec",
+            container,
+            "pg_isready",
+            "-h",
+            "127.0.0.1",
+            "-U",
+            "postgres",
+          ]);
           break;
         } catch (error) {
           if (Date.now() >= deadline) throw error;

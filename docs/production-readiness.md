@@ -8,7 +8,7 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **7/10** after request idempotency
+Current completion estimate: **7/10** after request idempotency and migration-runner hardening
 (2026-11-03), up from the prior 6.5/10 assessment. Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
@@ -17,22 +17,22 @@ observability, load testing and recovery evidence remain substantial work.
 
 ## Release blockers and work order
 
-| Workstream | Acceptance criteria | Current status |
-| --- | --- | --- |
-| Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports | Lint/types/build, report validation, PostgreSQL/Redis/BullMQ/Socket.IO/local SMTP suites pass locally; earlier clean Windows install recorded; GitHub/Linux verification and repository merge rules outstanding |
-| Response privacy | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles | Query projection implemented; integration unverified |
-| Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding |
-| Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding |
-| Sessions | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification | Server sessions, strict single-use rotation, replay/logout revocation, password/deactivation invalidation and PostgreSQL races verified locally; full login/password HTTP journeys, recovery, verification, browser coordination and deployed evidence outstanding |
-| Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Creation/transitions/history are atomic; creation idempotency, rollback/replay and assignment races verified locally; remaining command idempotency/versioning, proof and returns outstanding |
-| Payments | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence | Signed webhook/atomic confirmation and same-key initialization retries verified locally; reconciliation, distinct-attempt lifecycle, refunds and actual provider sandbox evidence outstanding |
-| Tracking | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding |
-| Notifications | Durable dispatch, preferences enforced, bounded retries and replay, valid links | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
-| Migrations | Fresh install and supported upgrade tested; business preference columns included; chronological journal repaired safely | SQL migrations through 0007 exercised in PostgreSQL fixtures, including historical settings repair; legacy fleet FK reconciliation/validation, actual migrator and deployed upgrade evidence outstanding |
-| Performance | Agreed peak workload, latency/error targets, representative data, sustained and overload tests | Unverified |
-| Delivery | Versioned artifact promoted through staging, deployment checks and tested rollback | Planned |
-| Operations | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks | Planned |
-| Data lifecycle | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules | Planned |
+| Workstream             | Acceptance criteria                                                                                                 | Current status                                                                                                                                                                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports          | Lint/types/build, report validation, PostgreSQL/Redis/BullMQ/Socket.IO/local SMTP suites pass locally; earlier clean Windows install recorded; GitHub/Linux verification and repository merge rules outstanding                                                                          |
+| Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | Query projection implemented; integration unverified                                                                                                                                                                                                                                     |
+| Private fleets         | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests           | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding                                                                                          |
+| Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding                                                                                                                                                 |
+| Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, strict single-use rotation, replay/logout revocation, password/deactivation invalidation and PostgreSQL races verified locally; full login/password HTTP journeys, recovery, verification, browser coordination and deployed evidence outstanding                       |
+| Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/transitions/history are atomic; creation idempotency, rollback/replay and assignment races verified locally; remaining command idempotency/versioning, proof and returns outstanding                                                                                            |
+| Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Signed webhook/atomic confirmation and same-key initialization retries verified locally; reconciliation, distinct-attempt lifecycle, refunds and actual provider sandbox evidence outstanding                                                                                            |
+| Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding            |
+| Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
+| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0007 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
+| Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Unverified                                                                                                                                                                                                                                                                               |
+| Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Planned                                                                                                                                                                                                                                                                                  |
+| Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | Planned                                                                                                                                                                                                                                                                                  |
+| Data lifecycle         | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules             | Planned                                                                                                                                                                                                                                                                                  |
 
 ## Evidence policy
 
@@ -274,7 +274,7 @@ Evidence: lint/types passed, 27 fast tests and 40 real PostgreSQL integration te
 passed with no failures/skips/todos. Main reports were generated and validated.
 A separate Windows copy with no .env/Git/existing node_modules installed all 263
 packages from the frozen lockfile and passed lint/types/build plus 27 fast tests.
-Its reports and lockfile hash are saved under reports/clean-install*. The temporary
+Its reports and lockfile hash are saved under reports/clean-install\*. The temporary
 source/dependency copy was removed after verification.
 
 A clean Linux Docker attempt failed before installation because the registry host
@@ -303,7 +303,7 @@ required. See docs/sessions.md for rollout and client contracts.
 
 Local Windows evidence: lint, type checking and Bun build passed. 35 fast tests and
 52 real PostgreSQL 17 integration tests passed, with zero failures, skips, todos
-or cancellations. Reports are retained in reports/unit.* and reports/integration.*.
+or cancellations. Reports are retained in reports/unit._ and reports/integration._.
 The database suite executes the actual migration and production statements,
 including duplicate/concurrent refresh, ownership, logout, password/deactivation
 invalidation, reactivation, expiry, deletion, cleanup and password/logout races.
@@ -342,7 +342,7 @@ broader public tracking privacy remains open. No frontend files were changed.
 
 Evidence: local Windows lint, types and Bun build passed; 38 fast tests and 66
 integration tests passed with zero failures/skips/todos/cancellations. JUnit and
-JSON results were retained in reports/unit.* and reports/integration.*. The new
+JSON results were retained in reports/unit._ and reports/integration._. The new
 tracking suite applies actual migrations in a separate PostgreSQL 17 container and
 uses real Socket.IO clients over WebSocket and polling, real jose signatures,
 production handlers/options and production SQL via a psql adapter. Tests cover
@@ -357,8 +357,7 @@ Remaining gates: frontend token/refresh/rejoin implementation; actual Neon HTTP
 and deployed Bun networking; shared socket adapter and distributed budgets before
 horizontal deployment; edge handshake/connection protection; public-link privacy
 and retention; representative load and revocation-latency measurements. No new
-migration or environment secrets are required beyond existing session migration
-0005. No production database, deployment or external account was modified. See
+migration or environment secrets are required beyond existing session migration 0005. No production database, deployment or external account was modified. See
 docs/tracking.md for the full contract and evidence boundaries.
 
 ## Notification outbox — 2026-11-03
@@ -382,7 +381,7 @@ commands, indexed retention/foreign-key paths and a bounded API shutdown drain.
 
 Evidence: lint, types, Bun build and 39 fast tests passed locally. All 77 integration
 tests passed (including 11 new outbox cases) with zero failures/skips/todos/
-cancellations. Reports are retained under reports/unit.* and reports/integration.*.
+cancellations. Reports are retained under reports/unit._ and reports/integration._.
 The new suite runs actual PostgreSQL migrations, Redis 7.4, BullMQ workers and a
 local SMTP protocol sink. It verifies atomic shipment/payment capture and rollback,
 duplicate confirmations/publication, Redis timeout/data loss, lease fencing,
@@ -424,7 +423,7 @@ and duplicate-charge protection are not claimed by this mechanism.
 
 Local Windows evidence: lint, types, Bun build and 43 fast tests passed; all 92
 integration tests passed with zero failures/skips/todos/cancellations. Validated
-JUnit/JSON reports remain in reports/unit.* and reports/integration.*. Fifteen new
+JUnit/JSON reports remain in reports/unit._ and reports/integration._. Fifteen new
 cases apply migration 0007 in disposable PostgreSQL and use real Hono handlers,
 signed JWT/session authentication, production service/SQL and the official Stripe
 SDK against a loopback HTTP fixture. They verify replay, key scope/conflicts,
@@ -451,3 +450,35 @@ docs/idempotency.md for contracts, expiry, credential rotation and retention lim
 
 Completion estimate after this build: **7/10** toward the agreed production-ready
 backend. This remains a planning estimate, not release approval.
+
+## Atomic migration runner — 2026-11-03
+
+PR-09/PR-17 acceptance: install all checked-in migrations on an empty database,
+upgrade the initial schema while preserving existing accounts, rerun without
+duplicate effects, roll back pending SQL and history together on failure, reject
+changed/unknown/duplicate/gapped history, serialize concurrent plans and recover
+after a lost commit acknowledgement. The production runner now uses an atomic
+Neon batch transaction, advisory lock, locked history recheck and full hash-based
+history validation. The historical settings omission is the sole allowed repair;
+existing migration SQL/timestamps remain unchanged. Lock, statement and HTTP
+deadlines are bounded. See docs/migrations.md for rollout and failure procedures.
+
+Local Windows / Node 24.12.0 evidence: lint, type checking and Bun 1.3.12 build
+passed; 43 fast tests and 99 integration tests passed, with no failures, skips,
+todos or cancellations. The complete integration run took about 337 seconds.
+Seven new cases execute the production runner core and all eight actual migration
+files against disposable PostgreSQL 17 using a psql adapter. Reports are retained
+in reports/unit.* and reports/integration.*; local artifact identity is commit=null.
+
+The first complete run failed during PostgreSQL fixture startup: readiness could
+observe the image's temporary Unix-socket initialization server before its restart.
+The shared fixture and older shipment suite now probe the final TCP listener.
+The original failure reports remain in reports/integration-before-startup-fix.*;
+the full rerun passed after this correction. No failure was hidden by test retries.
+
+Hosted Neon HTTP, the Bun migration CLI against a hosted database, remote Actions,
+large-data lock timing, deployed upgrade/rollback and backup restoration remain
+unverified. Legacy fleet reconciliation and FK validation remain outstanding.
+No production database, credentials, frontend or deployment changed. No new schema
+migration is introduced by this batch. Completion remains **7/10**: this closes a
+specific migration safety gap, while the other release gates above still apply.

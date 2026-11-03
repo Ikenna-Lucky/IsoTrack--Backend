@@ -1,43 +1,42 @@
-/**
- * Programmatic migration runner.
- * Run with: bun run src/db/migrate.ts
- *
- * Uses drizzle-kit's migrate() which applies pending SQL migrations
- * from the /drizzle folder to your Neon database.
- */
 import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
-import { migrate } from "drizzle-orm/neon-http/migrator";
-import { resolve } from "node:path";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
+import { fileURLToPath } from "node:url";
+import { runMigrations } from "./migration-runner.ts";
 
-const DATABASE_URL = process.env.DATABASE_URL;
-
-if (!DATABASE_URL) {
-  console.error("❌ DATABASE_URL environment variable is not set.");
-  console.error(
-    "   Copy .env.example → .env and fill in your Neon connection string.",
+async function main(): Promise<void> {
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL is required");
+  const client = neon(url);
+  const dialect = new PgDialect();
+  const store = {
+    execute: async (statement: SQL) => {
+      const query = dialect.sqlToQuery(statement);
+      return client(query.sql, query.params, {
+        fetchOptions: { signal: AbortSignal.timeout(120_000) },
+      });
+    },
+    transaction: async (statements: SQL[]) => {
+      await client.transaction(
+        statements.map((statement) => {
+          const query = dialect.sqlToQuery(statement);
+          return client(query.sql, query.params);
+        }),
+        { fetchOptions: { signal: AbortSignal.timeout(120_000) } },
+      );
+    },
+  };
+  const count = await runMigrations(
+    store,
+    fileURLToPath(new URL("../../drizzle", import.meta.url)),
   );
-  process.exit(1);
+  console.log(`Database migrations complete: ${count} applied.`);
 }
 
-async function runMigrations(): Promise<void> {
-  console.log("🔄 Running database migrations...\n");
-
-  const sql = neon(DATABASE_URL!);
-  const db = drizzle(sql);
-
-  const migrationsFolder = resolve(import.meta.dir, "../../drizzle");
-
-  try {
-    await migrate(db, { migrationsFolder });
-    console.log("✅ All migrations applied successfully.\n");
-  } catch (err) {
-    console.error("❌ Migration failed:", err);
-    process.exit(1);
-  }
-}
-
-runMigrations().catch((error: unknown) => {
-  console.error("Migration runner failed:", error);
+main().catch(() => {
+  // Driver errors may contain connection strings or SQL containing application data.
+  console.error(
+    "Database migration failed. Inspect database history before retrying. See docs/migrations.md.",
+  );
   process.exitCode = 1;
 });
