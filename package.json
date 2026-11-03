@@ -14,6 +14,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run src/db/migrate.ts",
     "sessions:purge": "bun run src/db/purge-sessions.ts",
+    "notifications:status": "bun run src/db/notification-operations.ts status",
+    "notifications:replay": "bun run src/db/notification-operations.ts replay",
+    "notifications:purge": "bun run src/db/notification-operations.ts purge",
     "db:push": "drizzle-kit push",
     "db:seed": "bun run src/db/seed.ts",
     "db:studio": "drizzle-kit studio"

@@ -11,9 +11,11 @@ bun run test:unit
 bun run test:integration
 ```
 
-The PostgreSQL suite needs Docker. It creates disposable containers and synthetic
-records without loading the application's database configuration or making Stripe
-payments. See `tests/README.md` for scope and container cleanup details.
+The integration suites need Docker. They create disposable PostgreSQL/Redis
+containers, loopback Socket.IO/SMTP servers and synthetic records without loading
+application credentials, making Stripe payments or sending external email. See
+`tests/README.md` for scope and container cleanup details. The runner has a seven-
+minute integration timeout; the CI job allows fifteen minutes including setup.
 
 ## Lint and build
 

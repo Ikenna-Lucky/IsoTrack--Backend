@@ -25,8 +25,9 @@ rotation, logout/password races, deactivation/reactivation, ownership, expiry an
 cleanup. Fast session tests cover origins, cookie attributes and storage failures.
 
 This is not full application integration: deployed Neon HTTP, the complete auth
-router's login/password flows, provider network calls, queue workers, Socket.IO,
-browser refresh coordination and ORM relation serialization remain separate gates.
+router's login/password flows, external provider calls, deployed worker/socket
+networking, browser refresh coordination and ORM relation serialization remain
+separate gates.
 A passing SQL or handler test must not be presented as proof of those layers. See
 docs/sessions.md for the strict refresh policy and migration requirements.
 
@@ -45,3 +46,16 @@ read. The client dependency is test-only. See docs/tracking.md for the contract.
 
 If forcibly interrupted, inspect the `isotrack-socket-test-*` prefix as well and
 stop only the particular abandoned test container.
+
+The outbox suite adds `isotrack-outbox-test-*` PostgreSQL and
+`isotrack-outbox-redis-test-*` Redis containers, plus a local SMTP protocol sink.
+It executes real BullMQ workers and intentionally kills a child worker after SMTP
+acceptance, then starts a replacement to verify recovery and the duplicate-send
+window. It also verifies rollback, Redis timeout/data loss, leases, retries,
+dead-letter replay, recipient checks and cleanup. Synthetic timestamps accelerate
+lease/backoff expiry; BullMQ stalled-job handling is real. No external email is
+sent and application credentials are not loaded. See docs/notifications.md.
+
+The report runner allows seven minutes for all integration files together. Docker
+must have capacity for the isolated services running in parallel. If interrupted,
+inspect only the exact test-container prefixes above before manual cleanup.

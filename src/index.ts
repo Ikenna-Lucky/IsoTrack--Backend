@@ -129,7 +129,28 @@ const httpServer: ServerType = serve({
 const io = new Server(httpServer, trackingServerOptions(env.FRONTEND_URL));
 
 registerSocketHandlers(io, trackingDependencies);
-startNotificationWorker();
+const notificationRuntime = startNotificationWorker();
+
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  const deadline = setTimeout(() => process.exit(1), 30_000);
+  deadline.unref();
+  const drain = async () => {
+    await Promise.all([
+      io.close(),
+      notificationRuntime.close(),
+    ]);
+    clearTimeout(deadline);
+  };
+  void drain().catch(() => {
+    console.error(JSON.stringify({ event: "shutdown_failed" }));
+    process.exitCode = 1;
+  });
+}
+process.once("SIGTERM", shutdown);
+process.once("SIGINT", shutdown);
 
 console.log(`
 ╔══════════════════════════════════════════╗

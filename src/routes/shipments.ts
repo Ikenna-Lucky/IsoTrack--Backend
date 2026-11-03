@@ -17,33 +17,13 @@ import { db } from "@/db";
 import { businesses, drivers } from "@/db/schema";
 import { findUserByEmail } from "@/db/queries/users";
 import { success, paginated, error } from "@/lib/response";
-import { enqueueShipmentEmail } from "@/lib/queue";
-import type { ShipmentMilestone } from "@/lib/email";
-import { createInAppNotification, shipmentNotificationContent } from "@/lib/notifications";
+
+
+
 
 export const shipmentsRouter = new Hono();
 
 const VALID_TRANSITIONS = shipmentTransitions;
-
-const EMAIL_MILESTONES = new Set<string>([
-  "assigned",
-  "picked_up",
-  "delivered",
-  "failed",
-]);
-
-function formatNgn(kobo: number): string {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-  }).format(kobo / 100);
-}
-
-function addrStr(addr: unknown): string {
-  const a = addr as { street?: string; city?: string } | null;
-  if (!a) return "";
-  return [a.street, a.city].filter(Boolean).join(", ");
-}
 
 const createShipmentSchema = z.object({
   description: z.string().min(1),
@@ -212,41 +192,6 @@ shipmentsRouter.patch(
     });
     if (!updated) return error(c, "Shipment changed; reload before trying again", 409);
 
-    // Write in-app notification for the business owner
-    const bizRow = await db
-      .select({ userId: businesses.userId })
-      .from(businesses)
-      .where(eq(businesses.id, shipment.businessId))
-      .limit(1);
-    if (bizRow[0]) {
-      const { title, message } = shipmentNotificationContent(
-        newStatus,
-        shipment.trackingId ?? "",
-        shipment.driver?.user?.name,
-      );
-      void createInAppNotification({
-        userId:   bizRow[0].userId,
-        title,
-        message,
-        metadata: { trackingId: shipment.trackingId ?? "", status: newStatus },
-      });
-    }
-
-    if (EMAIL_MILESTONES.has(newStatus) && shipment.customer?.email) {
-      enqueueShipmentEmail(newStatus as ShipmentMilestone, {
-        trackingId: shipment.trackingId ?? "",
-        customerName: shipment.customer.name,
-        customerEmail: shipment.customer.email,
-        pickup: addrStr(shipment.pickupAddress),
-        delivery: addrStr(shipment.deliveryAddress),
-        packageType: shipment.description,
-        amount: formatNgn(shipment.priceKobo),
-        driverName: shipment.driver?.user?.name ?? "",
-      }).catch((err: Error) =>
-        console.error("[Queue] enqueue failed:", err.message),
-      );
-    }
-
     return success(c, { data: updated, message: "Status updated" });
   },
 );
@@ -276,41 +221,6 @@ shipmentsRouter.patch(
       eventId: nanoid(), message: `Assigned to driver ${driverId}`,
     });
     if (!updated) return error(c, "Shipment or driver changed; reload before trying again", 409);
-
-    // Write in-app notification for the business owner
-    const bizRowAssign = await db
-      .select({ userId: businesses.userId })
-      .from(businesses)
-      .where(eq(businesses.id, shipment.businessId))
-      .limit(1);
-    if (bizRowAssign[0]) {
-      const { title, message } = shipmentNotificationContent(
-        "assigned",
-        shipment.trackingId ?? "",
-        driver.vehiclePlate,
-      );
-      void createInAppNotification({
-        userId:   bizRowAssign[0].userId,
-        title,
-        message,
-        metadata: { trackingId: shipment.trackingId ?? "", status: "assigned" },
-      });
-    }
-
-    if (shipment.customer?.email) {
-      enqueueShipmentEmail("assigned", {
-        trackingId: shipment.trackingId ?? "",
-        customerName: shipment.customer.name,
-        customerEmail: shipment.customer.email,
-        pickup: addrStr(shipment.pickupAddress),
-        delivery: addrStr(shipment.deliveryAddress),
-        packageType: shipment.description,
-        amount: formatNgn(shipment.priceKobo),
-        driverName: driver.vehiclePlate ?? "",
-      }).catch((err: Error) =>
-        console.error("[Queue] enqueue failed:", err.message),
-      );
-    }
 
     return success(c, { data: updated, message: "Driver assigned" });
   },

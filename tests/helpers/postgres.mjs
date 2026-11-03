@@ -6,12 +6,15 @@ import { PgDialect } from "drizzle-orm/pg-core";
 const execute = promisify(execFile);
 const dialect = new PgDialect();
 
-export function postgresFixture() {
-  const container = `isotrack-socket-test-${randomUUID()}`;
+export function postgresFixture(options = {}) {
+  const container =
+    options.container ??
+    `isotrack-${options.prefix ?? "socket"}-test-${randomUUID()}`;
   let started = false;
   const docker = (args) =>
     execute("docker", args, { encoding: "utf8", timeout: 60_000 });
   return {
+    container,
     async start() {
       await docker([
         "run",

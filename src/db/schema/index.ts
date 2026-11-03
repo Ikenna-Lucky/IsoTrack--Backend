@@ -9,5 +9,6 @@ export * from "./drivers";
 export * from "./shipments";
 export * from "./shipment-events";
 export * from "./notifications";
+export * from "./notification-outbox";
 export * from "./payments";
 export * from "./driver-invitations";

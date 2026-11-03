@@ -8,11 +8,18 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
+Current completion estimate: **6.5/10** after the notification outbox build
+(2026-11-03), up from the prior 6/10 assessment. Update this estimate after each
+build as requested. It is a rough planning assessment of the agreed backend scope,
+not a measured percentage, capacity claim or release approval. Deployment, full
+critical journeys, identity recovery, request idempotency, payment lifecycle,
+observability, load testing and recovery evidence remain substantial work.
+
 ## Release blockers and work order
 
 | Workstream | Acceptance criteria | Current status |
 | --- | --- | --- |
-| Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports | Lint/types/build, report validation and PostgreSQL suites pass locally and clean Windows install; GitHub/Linux verification, Redis integration and repository merge rules outstanding |
+| Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports | Lint/types/build, report validation, PostgreSQL/Redis/BullMQ/Socket.IO/local SMTP suites pass locally; earlier clean Windows install recorded; GitHub/Linux verification and repository merge rules outstanding |
 | Response privacy | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles | Query projection implemented; integration unverified |
 | Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding |
@@ -20,7 +27,7 @@ must be established by measurement. Do not use paid services without approval.
 | Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Creation/transitions and history are atomic; status-conflict, rollback and assignment-race tests pass; durable idempotency, versioning, proof and returns outstanding |
 | Payments | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence | Public signed webhook and atomic repeat-safe confirmation tested; initialization idempotency, reconciliation, refunds and provider sandbox evidence outstanding |
 | Tracking | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding |
-| Notifications | Durable dispatch, preferences enforced, bounded retries and replay, valid links | Incomplete |
+| Notifications | Durable dispatch, preferences enforced, bounded retries and replay, valid links | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
 | Migrations | Fresh install and supported upgrade tested; business preference columns included; chronological journal repaired safely | Failed inspection |
 | Performance | Agreed peak workload, latency/error targets, representative data, sustained and overload tests | Unverified |
 | Delivery | Versioned artifact promoted through staging, deployment checks and tested rollback | Planned |
@@ -353,3 +360,45 @@ and retention; representative load and revocation-latency measurements. No new
 migration or environment secrets are required beyond existing session migration
 0005. No production database, deployment or external account was modified. See
 docs/tracking.md for the full contract and evidence boundaries.
+
+## Notification outbox — 2026-11-03
+
+Added migration 0006 with channel-specific durable notification records and capture
+triggers on shipment history and payment success. Capture failure rolls back the
+business change. Removed route fire-and-forget delivery and the old worker/queue
+helpers. Business and registered customer in-app notifications now complete
+atomically with their outbox record; customer milestone/payment emails have
+independent durable delivery state. Current recipient account, role and shipment
+relationship are checked before delivery.
+
+PostgreSQL owns a five-attempt retry budget, timed backoff, two-minute ownership
+leases and dead letters. Redis carries IDs only; a bounded non-overlapping
+dispatcher republishes pending/expired work after queue loss. Deterministic
+BullMQ IDs and database completion prevent duplicate in-app delivery. Email uses
+stable Message-IDs and bounded SMTP timeouts but remains at least once: a crash
+after acceptance can cause another send. The actual crash test observes that
+window; no exactly-once SMTP claim is made. Added operator status/replay/purge
+commands, indexed retention/foreign-key paths and a bounded API shutdown drain.
+
+Evidence: lint, types, Bun build and 39 fast tests passed locally. All 77 integration
+tests passed (including 11 new outbox cases) with zero failures/skips/todos/
+cancellations. Reports are retained under reports/unit.* and reports/integration.*.
+The new suite runs actual PostgreSQL migrations, Redis 7.4, BullMQ workers and a
+local SMTP protocol sink. It verifies atomic shipment/payment capture and rollback,
+duplicate confirmations/publication, Redis timeout/data loss, lease fencing,
+bounded retries/dead-letter replay, stale/disabled recipients, retention and a real
+child process killed after SMTP acceptance, followed by replacement-worker recovery.
+Fixture timestamps accelerate lease/backoff waits; real stalled-job recovery runs.
+
+Remaining gates: controlled legacy-queue cutover and production migration; deployed
+Neon/Bun and Gmail TLS/provider verification; channel/preferences and guest delivery
+decisions; lag/dead-letter alerts and durable operator audit; cleanup scheduling;
+provider quotas, distributed budgets and measured capacity. SIGTERM runtime closure
+and the killed worker are covered at component boundaries; full deployed entrypoint
+shutdown is not rehearsed. No live credentials, external email, production database
+or deployment were used. CI discovers the suites and retains reports, but remote
+Actions has not run. Integration timeout is seven minutes and CI job budget fifteen
+minutes to accommodate the added real services. See docs/notifications.md.
+
+Completion estimate after this build: **6.5/10** toward the agreed production-ready
+backend, subject to the outstanding gates above and the release register.

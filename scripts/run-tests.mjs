@@ -37,7 +37,7 @@ const result = spawnSync(
   {
     cwd: root,
     stdio: "inherit",
-    timeout: suite === "integration" ? 240000 : 60000,
+    timeout: suite === "integration" ? 420000 : 60000,
   },
 );
 let counts = null;
