@@ -43,8 +43,9 @@ invalidate a login or refresh racing that change. Changes to ordinary profile
 fields do not invalidate sessions. Current roles still come from the database.
 
 Authorization checks apply to new protected HTTP requests. Requests already
-authorized may finish after revocation. Socket.IO authentication and revocation
-remain a separate release blocker; this batch does not secure the socket server.
+authorized may finish after revocation. Socket.IO now checks these sessions at
+connection, during handled events, before GPS delivery and on periodic idle checks.
+See tracking.md for its timing, reconnect contract and remaining deployment gates.
 
 ## Rollout and cleanup
 
@@ -80,5 +81,6 @@ authentication middleware, real jose signatures and real PostgreSQL statements.
 The integration transport is a psql test adapter, not deployed Neon HTTP. The full
 login/password HTTP routes, browser coordination, production migration, deployed
 configuration and remote CI remain unverified. Rate limiting, device management,
-session audit telemetry, issuer/audience policy and socket security remain future
-hardening work. No production workload capacity is claimed.
+session audit telemetry and issuer/audience policy remain future hardening work.
+Socket verification and deployment limits are recorded in tracking.md. No
+production workload capacity is claimed.

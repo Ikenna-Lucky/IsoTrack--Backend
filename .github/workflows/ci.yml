@@ -37,7 +37,7 @@ jobs:
       - name: Unit and HTTP handler tests
         id: unit
         run: bun run test:unit
-      - name: PostgreSQL integration tests
+      - name: PostgreSQL and Socket.IO integration tests
         id: integration
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: bun run test:integration

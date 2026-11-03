@@ -33,3 +33,15 @@ docs/sessions.md for the strict refresh policy and migration requirements.
 If a test process is forcibly terminated, Docker may retain its running container.
 Inspect containers named `isotrack-access-test-*` before manually stopping the
 specific abandoned test container. Do not remove unrelated containers.
+
+The tracking suite separately creates an `isotrack-socket-test-*` PostgreSQL
+container and an HTTP/Socket.IO server on a random loopback port. Real clients test
+WebSocket and polling, active-session authentication, shipment participant access,
+assigned-driver writes, reassignment, revocation, reconnect, transport/packet bounds
+and credential changes. It uses the production handlers/options/SQL and real jose
+signatures with a psql transport adapter. It does not prove deployed Neon/Bun
+networking, frontend behavior or horizontal delivery. The application .env is not
+read. The client dependency is test-only. See docs/tracking.md for the contract.
+
+If forcibly interrupted, inspect the `isotrack-socket-test-*` prefix as well and
+stop only the particular abandoned test container.

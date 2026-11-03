@@ -19,7 +19,7 @@ must be established by measurement. Do not use paid services without approval.
 | Sessions | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification | Server sessions, strict single-use rotation, replay/logout revocation, password/deactivation invalidation and PostgreSQL races verified locally; full login/password HTTP journeys, recovery, verification, browser coordination and deployed evidence outstanding |
 | Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Creation/transitions and history are atomic; status-conflict, rollback and assignment-race tests pass; durable idempotency, versioning, proof and returns outstanding |
 | Payments | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence | Public signed webhook and atomic repeat-safe confirmation tested; initialization idempotency, reconciliation, refunds and provider sandbox evidence outstanding |
-| Tracking | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy | Missing; release blocker |
+| Tracking | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding |
 | Notifications | Durable dispatch, preferences enforced, bounded retries and replay, valid links | Incomplete |
 | Migrations | Fresh install and supported upgrade tested; business preference columns included; chronological journal repaired safely | Failed inspection |
 | Performance | Agreed peak workload, latency/error targets, representative data, sustained and overload tests | Unverified |
@@ -309,3 +309,47 @@ performed. Full login/password HTTP flows, actual Neon transport, browser refres
 coordination, credential recovery, email verification and socket revocation remain
 unverified or missing. Existing tokens will be rejected after rollout; users must
 log in again. Backend-only change; no new environment secrets required.
+
+## Real-time tracking security — 2026-11-03
+
+Replaced anonymous room joins and unauthenticated GPS broadcasting with signed
+access-token/session authentication. Shipment ownership, current database role,
+private fleet and driver assignment are verified server-side. Joins require
+participant access; location updates require the assigned driver and active
+delivery status. Session, assignment, sample order, freshness and one-write-per-
+second limits are enforced in the same PostgreSQL update. Accepted locations are
+persisted to the shipment before best-effort delivery.
+
+Every event checks its session and every broadcast checks intended recipients'
+current session and shipment access. Queries batch at most 100 identities; room
+lookup visits only local shipment subscribers. Idle sessions are rechecked on a
+non-overlapping 15-second interval plus database/processing time. Five-second Neon
+fetch timeouts bound individual tracking requests. Failures deny access/disconnect.
+In-flight already-authorized work can finish after a permission change.
+
+Added 8 KiB transport bounds, five connections/user/process, twenty subscriptions/
+socket, ten handled events/second/socket and one in-flight event/socket. Volatile
+delivery avoids GPS backlogs. Recovery is disabled: reconnects authenticate again
+and rejoin. Public HTTP projections now return null for live shipment/driver GPS;
+broader public tracking privacy remains open. No frontend files were changed.
+
+Evidence: local Windows lint, types and Bun build passed; 38 fast tests and 66
+integration tests passed with zero failures/skips/todos/cancellations. JUnit and
+JSON results were retained in reports/unit.* and reports/integration.*. The new
+tracking suite applies actual migrations in a separate PostgreSQL 17 container and
+uses real Socket.IO clients over WebSocket and polling, real jose signatures,
+production handlers/options and production SQL via a psql adapter. Tests cover
+anonymous/expired/revoked/legacy credentials, cross-business/role access, assigned
+driver persistence, spoofed identity fields, malformed/stale GPS, reassignment,
+logout, idle expiry, reconnect, outages, concurrent writes, burst/frame/origin
+limits, live password/deactivation invalidation and stale JWT role claims. Fast
+tests cover location bounds and public GPS projection. CI discovers these suites
+through the existing report runner; remote execution has not been performed.
+
+Remaining gates: frontend token/refresh/rejoin implementation; actual Neon HTTP
+and deployed Bun networking; shared socket adapter and distributed budgets before
+horizontal deployment; edge handshake/connection protection; public-link privacy
+and retention; representative load and revocation-latency measurements. No new
+migration or environment secrets are required beyond existing session migration
+0005. No production database, deployment or external account was modified. See
+docs/tracking.md for the full contract and evidence boundaries.

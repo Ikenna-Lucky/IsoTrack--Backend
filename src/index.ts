@@ -17,6 +17,8 @@ import { notificationsRouter } from "@/routes/notifications";
 import { paymentsRouter } from "@/routes/payments";
 import { trackingRouter } from "@/routes/tracking";
 import { registerSocketHandlers } from "@/socket/handlers";
+import { trackingDependencies } from "@/socket/dependencies";
+import { trackingServerOptions } from "@/socket/server-options";
 import { startNotificationWorker } from "@/workers/notification.worker";
 import { env } from "@/lib/env";
 
@@ -124,16 +126,9 @@ const httpServer: ServerType = serve({
   port: env.PORT,
 });
 
-const io = new Server(httpServer, {
-  cors: {
-    origin: env.FRONTEND_URL,
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-  transports: ["websocket", "polling"],
-});
+const io = new Server(httpServer, trackingServerOptions(env.FRONTEND_URL));
 
-registerSocketHandlers(io);
+registerSocketHandlers(io, trackingDependencies);
 startNotificationWorker();
 
 console.log(`
