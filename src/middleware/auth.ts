@@ -7,9 +7,11 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import type { UserRole } from "@/types";
+import { isSessionActive } from "@/lib/sessions";
 
 export const authenticate = createAuthenticationMiddleware({
   verifyToken: verifyAccessToken,
+  isSessionActive,
   findUser: async (id) => {
     const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
     return user;

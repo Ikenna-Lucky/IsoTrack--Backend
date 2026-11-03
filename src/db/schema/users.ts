@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, index, integer } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { userRoleEnum } from "./enums";
 import { businesses } from "./businesses";
@@ -11,6 +11,7 @@ export const users = pgTable(
     id: text("id").primaryKey(),
     email: text("email").notNull().unique(),
     passwordHash: text("password_hash").notNull(),
+    credentialVersion: integer("credential_version").default(0).notNull(),
     name: text("name").notNull(),
     role: userRoleEnum("role").notNull(),
     phone: text("phone"),

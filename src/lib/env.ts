@@ -1,4 +1,9 @@
 import { z } from "zod";
+import { tokenDurationSeconds } from "./token-duration";
+
+const tokenLifetime = z.string().refine((value) => {
+  try { tokenDurationSeconds(value); return true; } catch { return false; }
+}, "Use a positive duration (s, m, h, d), up to 365 days");
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(8000),
@@ -9,9 +14,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
-  JWT_EXPIRES_IN: z.string().default("15m"),
+  JWT_EXPIRES_IN: tokenLifetime.default("15m"),
   JWT_REFRESH_SECRET: z.string().min(32, "JWT_REFRESH_SECRET must be at least 32 characters"),
-  JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
+  JWT_REFRESH_EXPIRES_IN: tokenLifetime.default("7d"),
 
   UPSTASH_REDIS_URL: z.string().min(1, "UPSTASH_REDIS_URL is required"),
 

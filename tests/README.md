@@ -17,10 +17,18 @@ The ownership suite executes the production SQL authorization predicate against
 PostgreSQL. It checks permitted reads, foreign reads, null assignments, rejected
 writes with fresh verification, unknown roles and injection strings.
 
-This is not full application integration: its minimal fixture schema does not
-apply the project's migrations or exercise Hono routing, JWT middleware, payment
-providers, queue workers or ORM relation serialization. Those require separate
-suites. A passing predicate test must not be presented as proof of those layers.
+The suite also applies the actual application migrations in a separate schema and
+tests invitation enrollment, atomic shipment history, Stripe payment confirmation
+and revocable sessions. Selected Hono handlers run with real jose/Stripe signatures
+and PostgreSQL through a psql adapter. Session tests cover replay, concurrent
+rotation, logout/password races, deactivation/reactivation, ownership, expiry and
+cleanup. Fast session tests cover origins, cookie attributes and storage failures.
+
+This is not full application integration: deployed Neon HTTP, the complete auth
+router's login/password flows, provider network calls, queue workers, Socket.IO,
+browser refresh coordination and ORM relation serialization remain separate gates.
+A passing SQL or handler test must not be presented as proof of those layers. See
+docs/sessions.md for the strict refresh policy and migration requirements.
 
 If a test process is forcibly terminated, Docker may retain its running container.
 Inspect containers named `isotrack-access-test-*` before manually stopping the

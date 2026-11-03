@@ -16,7 +16,7 @@ must be established by measurement. Do not use paid services without approval.
 | Response privacy | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles | Query projection implemented; integration unverified |
 | Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding |
-| Sessions | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification | JWT algorithm/type/claim validation and middleware error boundaries tested; revocation, refresh reuse and recovery outstanding |
+| Sessions | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification | Server sessions, strict single-use rotation, replay/logout revocation, password/deactivation invalidation and PostgreSQL races verified locally; full login/password HTTP journeys, recovery, verification, browser coordination and deployed evidence outstanding |
 | Shipment correctness | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns | Creation/transitions and history are atomic; status-conflict, rollback and assignment-race tests pass; durable idempotency, versioning, proof and returns outstanding |
 | Payments | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence | Public signed webhook and atomic repeat-safe confirmation tested; initialization idempotency, reconciliation, refunds and provider sandbox evidence outstanding |
 | Tracking | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy | Missing; release blocker |
@@ -275,3 +275,37 @@ could not resolve. Linux behavior and actual GitHub Actions execution remain
 unverified; no clean Linux pass is claimed. Full release work still includes
 repository required-check rules, security scans, Redis tests, deployed verification
 and CD/recovery gates. Only backend files changed in this batch.
+
+## Revocable sessions — 2026-11-03
+
+Added indexed PostgreSQL sessions, signed session identifiers and refresh
+generations. Every protected HTTP request checks the session against the current
+user credential version and expiry. Rotation is a conditional single-statement
+update; reusing a generation revokes that device's session, including its access
+tokens. Clients must serialize refreshes; concurrent reuse and lost responses can
+force reauthentication. Session expiry remains absolute across rotation.
+
+The new migration installs a credential-version trigger for password and active
+status changes. This invalidates every device and prevents reactivation from
+resurrecting old sessions. Password writes use the previously verified hash as a
+compare-and-set condition. Logout persists revocation before clearing its cookie;
+storage failures remain server errors. Cookie session endpoints enforce the
+configured frontend Origin and no-store responses. A bounded cleanup command
+removes records expired more than seven days ago; deployment scheduling is still
+required. See docs/sessions.md for rollout and client contracts.
+
+Local Windows evidence: lint, type checking and Bun build passed. 35 fast tests and
+52 real PostgreSQL 17 integration tests passed, with zero failures, skips, todos
+or cancellations. Reports are retained in reports/unit.* and reports/integration.*.
+The database suite executes the actual migration and production statements,
+including duplicate/concurrent refresh, ownership, logout, password/deactivation
+invalidation, reactivation, expiry, deletion, cleanup and password/logout races.
+An HTTP test combines the production session router and authentication middleware
+with real jose signatures and PostgreSQL through a psql adapter. Fast tests also
+verify that the origin guard does not affect unrelated routes.
+
+No production migration, deployment, remote Actions run or capacity test was
+performed. Full login/password HTTP flows, actual Neon transport, browser refresh
+coordination, credential recovery, email verification and socket revocation remain
+unverified or missing. Existing tokens will be rejected after rollout; users must
+log in again. Backend-only change; no new environment secrets required.

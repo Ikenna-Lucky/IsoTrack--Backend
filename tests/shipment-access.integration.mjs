@@ -33,6 +33,9 @@ import { confirmPaymentStatement } from "../src/db/queries/confirm-payment.ts";
 import { createStripeWebhookRouter } from "../src/routes/stripe-webhook.ts";
 import Stripe from "stripe";
 import { parseStripeSession } from "../src/lib/stripe-payload.ts";
+import { openSessionStatement, rotateSessionStatement, activeSessionStatement, revokeSessionStatement, changePasswordStatement, purgeExpiredSessionsStatement } from "../src/db/queries/session-statements.ts";
+import { createSessionRouter } from "../src/routes/sessions.ts";
+import { requireSessionClaims } from "../src/lib/session-claims.ts";
 
 const container = `isotrack-access-test-${randomUUID()}`;
 const image = "postgres:17-alpine";
@@ -1059,4 +1062,160 @@ test("Stripe cannot settle legacy records or reuse a reference with a different 
   assert.equal(query(inMigrationSchema(confirmPaymentStatement({ reference: "LEGACY-REF", sessionId: "cs_test_legacy",
     amountKobo: 100, currency: "NGN", channel: "stripe_checkout", paidAt: "2026-11-03T00:00:00Z" }))), "");
   assert.equal(query(paymentConfirmation("payment-success", { sessionId: "cs_test_different" })), "");
+});
+
+test("session migration preserves existing users and creates revocable sessions", () => {
+  query(inMigrationSchema(sql.raw(readFileSync(new URL("../drizzle/0005_auth_sessions.sql", import.meta.url), "utf8"))));
+  assert.equal(query(inMigrationSchema(sql`select credential_version from users where id='owner-a'`)), "0");
+});
+
+function sessionFixture(label) {
+  const user = `session-user-${label}`;
+  const sid = `session-${label}`;
+  query(inMigrationSchema(sql`insert into users(id,email,password_hash,name,role)
+    values (${user}, ${`${user}@example.test`}, 'original-hash', 'Session test', 'customer')`));
+  assert.ok(query(inMigrationSchema(openSessionStatement(sid, user, 0, 3600))));
+  return { user, sid };
+}
+const activeSession = ({ sid, user }) => query(inMigrationSchema(activeSessionStatement(sid, user)));
+
+test("refresh rotates once and replay revokes that session only", () => {
+  const fixture = sessionFixture("replay");
+  const other = "session-other-device";
+  query(inMigrationSchema(openSessionStatement(other, fixture.user, 0, 3600)));
+  assert.equal(query(inMigrationSchema(rotateSessionStatement(fixture.sid, fixture.user, 0))), "1|");
+  assert.equal(activeSession(fixture), fixture.sid);
+  assert.match(query(inMigrationSchema(rotateSessionStatement(fixture.sid, fixture.user, 0))), /^1\|.+/);
+  assert.equal(activeSession(fixture), "");
+  assert.equal(query(inMigrationSchema(rotateSessionStatement(fixture.sid, fixture.user, 1))), "");
+  assert.equal(activeSession({ sid: other, user: fixture.user }), other);
+});
+
+test("concurrent refreshes serialize and revoke the reused generation", async () => {
+  const fixture = sessionFixture("race");
+  const rotate = () => concurrentQuery(inMigrationSchema(rotateSessionStatement(fixture.sid, fixture.user, 0)));
+  const results = await Promise.all([rotate(), rotate()]);
+  assert.equal(results.filter((result) => result === "1|").length, 1);
+  assert.equal(results.filter((result) => /^1\|.+/.test(result)).length, 1);
+  assert.equal(activeSession(fixture), "");
+});
+
+test("session ownership prevents cross-user checks, rotation and revocation", () => {
+  const fixture = sessionFixture("ownership");
+  assert.equal(activeSession({ ...fixture, user: "owner-b" }), "");
+  assert.equal(query(inMigrationSchema(rotateSessionStatement(fixture.sid, "owner-b", 0))), "");
+  query(inMigrationSchema(revokeSessionStatement(fixture.sid, "owner-b")));
+  assert.equal(activeSession(fixture), fixture.sid);
+});
+
+test("logout revocation is idempotent and prevents access and refresh", () => {
+  const fixture = sessionFixture("logout");
+  for (let i = 0; i < 2; i++) query(inMigrationSchema(revokeSessionStatement(fixture.sid, fixture.user)));
+  assert.equal(activeSession(fixture), "");
+  assert.equal(query(inMigrationSchema(rotateSessionStatement(fixture.sid, fixture.user, 0))), "");
+});
+
+test("password changes invalidate every device and reject stale password writes and logins", () => {
+  const fixture = sessionFixture("password");
+  query(inMigrationSchema(openSessionStatement("session-password-other", fixture.user, 0, 3600)));
+  assert.equal(query(inMigrationSchema(changePasswordStatement(fixture.user, "original-hash", "new-hash"))), fixture.user);
+  assert.equal(activeSession(fixture), "");
+  assert.equal(activeSession({ ...fixture, sid: "session-password-other" }), "");
+  assert.equal(query(inMigrationSchema(rotateSessionStatement(fixture.sid, fixture.user, 0))), "");
+  assert.equal(query(inMigrationSchema(changePasswordStatement(fixture.user, "original-hash", "stale-hash"))), "");
+  assert.equal(query(inMigrationSchema(openSessionStatement("stale-login", fixture.user, 0, 3600))), "");
+  assert.ok(query(inMigrationSchema(openSessionStatement("new-login", fixture.user, 1, 3600))));
+});
+
+test("deactivation and reactivation never resurrect old sessions", () => {
+  const fixture = sessionFixture("inactive");
+  query(inMigrationSchema(sql`update users set is_active=false where id=${fixture.user}`));
+  assert.equal(activeSession(fixture), "");
+  assert.equal(query(inMigrationSchema(openSessionStatement("inactive-login", fixture.user, 1, 3600))), "");
+  query(inMigrationSchema(sql`update users set is_active=true where id=${fixture.user}`));
+  assert.equal(activeSession(fixture), "");
+  assert.equal(query(inMigrationSchema(rotateSessionStatement(fixture.sid, fixture.user, 0))), "");
+  assert.ok(query(inMigrationSchema(openSessionStatement("reactivated-login", fixture.user, 2, 3600))));
+});
+
+test("expired sessions cannot refresh or authorize and user deletion removes sessions", () => {
+  const fixture = sessionFixture("expiry");
+  query(inMigrationSchema(sql`update auth_sessions set created_at=now()-interval '2 hours', expires_at=now()-interval '1 hour' where id=${fixture.sid}`));
+  assert.equal(activeSession(fixture), "");
+  assert.equal(query(inMigrationSchema(rotateSessionStatement(fixture.sid, fixture.user, 0))), "");
+  query(inMigrationSchema(sql`delete from users where id=${fixture.user}`));
+  assert.equal(query(inMigrationSchema(sql`select count(*) from auth_sessions where user_id=${fixture.user}`)), "0");
+});
+
+test("HTTP refresh replay and logout revoke real PostgreSQL sessions and protected access", async () => {
+  const fixture = sessionFixture("http");
+  const sid = "http_session_id_12345";
+  query(inMigrationSchema(openSessionStatement(sid, fixture.user, 0, 3600)));
+  const key = new TextEncoder().encode("real-session-test-signing-secret-32-chars");
+  const sign = (type, generation = 0) => new SignJWT({ type, sid, generation, role: "customer" })
+    .setProtectedHeader({ alg: "HS256" }).setSubject(fixture.user).setIssuedAt().setExpirationTime("1h").sign(key);
+  const verify = async (token, type) => {
+    const payload = await verifySessionToken(token, key, type);
+    requireSessionClaims(payload, type === "refresh");
+    return payload;
+  };
+  const findUser = async () => ({ id: fixture.user, isActive: true, role: "customer" });
+  const router = createSessionRouter({ frontendOrigin: "https://app.example.test", secureCookies: true,
+    verify: (token) => verify(token, "refresh"), findUser, sanitize: (user) => ({ id: user.id }),
+    rotate: async (_, payload) => {
+      const result = await concurrentQuery(inMigrationSchema(rotateSessionStatement(payload.sid, payload.sub, payload.generation)));
+      if (result !== `${payload.generation + 1}|`) return null;
+      return { accessToken: await sign("access"), refreshToken: await sign("refresh", payload.generation + 1), maxAge: 3600 };
+    }, revoke: async (id, user) => { query(inMigrationSchema(revokeSessionStatement(id, user))); },
+  });
+  router.get("/protected", createAuthenticationMiddleware({
+    verifyToken: (token) => verify(token, "access"), findUser,
+    isSessionActive: async (id, user) => Boolean(query(inMigrationSchema(activeSessionStatement(id, user)))),
+  }), (c) => c.json({ ok: true }));
+  const headers = { Origin: "https://app.example.test", Cookie: `iso_refresh_token=${await sign("refresh")}` };
+  const first = await router.request("/refresh", { method: "POST", headers });
+  assert.equal(first.status, 200);
+  assert.match(first.headers.get("set-cookie"), /HttpOnly/);
+  assert.match(first.headers.get("set-cookie"), /Secure/);
+  const access = (await first.json()).data.accessToken;
+  const protectedRequest = () => router.request("/protected", { headers: { Origin: headers.Origin, Authorization: `Bearer ${access}` } });
+  assert.equal((await protectedRequest()).status, 200);
+  assert.equal((await router.request("/refresh", { method: "POST", headers })).status, 401);
+  assert.equal((await protectedRequest()).status, 401);
+  query(inMigrationSchema(openSessionStatement("http_logout_id_123456", fixture.user, 0, 3600)));
+  const logoutToken = await new SignJWT({ type: "refresh", sid: "http_logout_id_123456", generation: 0 })
+    .setProtectedHeader({ alg: "HS256" }).setSubject(fixture.user).setIssuedAt().setExpirationTime("1h").sign(key);
+  assert.equal((await router.request("/logout", { method: "POST", headers: { Origin: headers.Origin, Cookie: `iso_refresh_token=${logoutToken}` } })).status, 200);
+  assert.equal(activeSession({ sid: "http_logout_id_123456", user: fixture.user }), "");
+});
+
+test("refresh racing logout cannot leave a live session", async () => {
+  const fixture = sessionFixture("logout-race");
+  await Promise.all([
+    concurrentQuery(inMigrationSchema(rotateSessionStatement(fixture.sid, fixture.user, 0))),
+    concurrentQuery(inMigrationSchema(revokeSessionStatement(fixture.sid, fixture.user))),
+  ]);
+  assert.equal(activeSession(fixture), "");
+});
+
+test("password change racing refresh and stale login leaves no valid old credentials", async () => {
+  const fixture = sessionFixture("password-race");
+  await Promise.all([
+    concurrentQuery(inMigrationSchema(rotateSessionStatement(fixture.sid, fixture.user, 0))),
+    concurrentQuery(inMigrationSchema(openSessionStatement("password-race-login", fixture.user, 0, 3600))),
+    concurrentQuery(inMigrationSchema(changePasswordStatement(fixture.user, "original-hash", "changed-hash"))),
+  ]);
+  assert.equal(activeSession(fixture), "");
+  assert.equal(activeSession({ ...fixture, sid: "password-race-login" }), "");
+});
+
+test("session cleanup removes old expired records and preserves active and recently expired sessions", () => {
+  const fixture = sessionFixture("cleanup");
+  for (const [id, expiry] of [["old-expired", "8 days"], ["recent-expired", "1 hour"]]) {
+    query(inMigrationSchema(sql`insert into auth_sessions(id,user_id,credential_version,created_at,expires_at)
+      values (${id}, ${fixture.user}, 0, now()-interval '10 days', now()-${expiry}::interval)`));
+  }
+  assert.equal(query(inMigrationSchema(purgeExpiredSessionsStatement())), "old-expired");
+  assert.equal(activeSession(fixture), fixture.sid);
+  assert.equal(query(inMigrationSchema(sql`select count(*) from auth_sessions where id='recent-expired'`)), "1");
 });

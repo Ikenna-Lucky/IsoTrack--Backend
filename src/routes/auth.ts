@@ -1,17 +1,18 @@
+import { createSessionRouter } from "./sessions";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { setCookie, deleteCookie } from "hono/cookie";
 import { z } from "zod";
 import { hash, compare } from "bcryptjs";
 import { nanoid } from "nanoid";
 
 import { env } from "@/lib/env";
 import {
-  createAccessToken,
-  createRefreshToken,
   verifyRefreshToken,
   refreshTokenMaxAge,
 } from "@/lib/jwt";
+import { openSession, rotateSession, revokeSession } from "@/lib/sessions";
+import { changePasswordStatement } from "@/db/queries/session-statements";
 import { authenticate } from "@/middleware/auth";
 import {
   findUserByEmail,
@@ -32,14 +33,14 @@ const BCRYPT_ROUNDS = 12;
 
 // ─── Cookie helpers ───────────────────────────────────────────────────────────
 
-function setRefreshCookie(c: Parameters<typeof setCookie>[0], token: string) {
+function setRefreshCookie(c: Parameters<typeof setCookie>[0], token: string, maxAge = refreshTokenMaxAge()) {
   const isProduction = env.NODE_ENV === "production";
   setCookie(c, REFRESH_COOKIE, token, {
     httpOnly: true,
     secure: isProduction,
     sameSite: isProduction ? "None" : "Lax",
     path: "/",
-    maxAge: refreshTokenMaxAge(),
+    maxAge,
   });
 }
 
@@ -135,12 +136,10 @@ authRouter.post("/register", zValidator("json", registerSchema), async (c) => {
 
 
   // Issue tokens
-  const [accessToken, refreshToken] = await Promise.all([
-    createAccessToken(user.id, user.role),
-    createRefreshToken(user.id),
-  ]);
-
-  setRefreshCookie(c, refreshToken);
+  const session = await openSession(user);
+  if (!session) return error(c, "Account credentials changed. Please log in again", 401);
+  const { accessToken } = session;
+  setRefreshCookie(c, session.refreshToken, session.maxAge);
 
   return success(c, {
     data: {
@@ -177,12 +176,10 @@ authRouter.post("/login", zValidator("json", loginSchema), async (c) => {
   }
 
   // Issue tokens
-  const [accessToken, refreshToken] = await Promise.all([
-    createAccessToken(user.id, user.role),
-    createRefreshToken(user.id),
-  ]);
-
-  setRefreshCookie(c, refreshToken);
+  const session = await openSession(user);
+  if (!session) return error(c, "Account credentials changed. Please log in again", 401);
+  const { accessToken } = session;
+  setRefreshCookie(c, session.refreshToken, session.maxAge);
 
   return success(c, {
     data: {
@@ -195,48 +192,15 @@ authRouter.post("/login", zValidator("json", loginSchema), async (c) => {
 
 // ─── POST /auth/refresh ───────────────────────────────────────────────────────
 
-authRouter.post("/refresh", async (c) => {
-  const refreshToken = getCookie(c, REFRESH_COOKIE);
-
-  if (!refreshToken) {
-    return error(c, "No refresh token provided", 401);
-  }
-
-  try {
-    const payload = await verifyRefreshToken(refreshToken);
-
-    const user = await findUserById(payload.sub);
-    if (!user || !user.isActive) {
-      clearRefreshCookie(c);
-      return error(c, "Session expired", 401);
-    }
-
-    const [newAccessToken, newRefreshToken] = await Promise.all([
-      createAccessToken(user.id, user.role),
-      createRefreshToken(user.id),
-    ]);
-
-    setRefreshCookie(c, newRefreshToken);
-
-    return success(c, {
-      data: {
-        user: sanitizeUser(user),
-        accessToken: newAccessToken,
-      },
-    });
-  } catch {
-    clearRefreshCookie(c);
-    return error(c, "Invalid or expired refresh token", 401);
-  }
-});
-
-// ─── POST /auth/logout ────────────────────────────────────────────────────────
-
-authRouter.post("/logout", (c) => {
-  clearRefreshCookie(c);
-  return success(c, { data: null, message: "Logged out successfully" });
-});
-
+authRouter.route("/", createSessionRouter({
+  frontendOrigin: new URL(env.FRONTEND_URL).origin,
+  secureCookies: env.NODE_ENV === "production",
+  verify: verifyRefreshToken,
+  findUser: findUserById,
+  rotate: rotateSession,
+  revoke: revokeSession,
+  sanitize: sanitizeUser,
+}));
 // ─── PATCH /auth/me ───────────────────────────────────────────────────────────
 // Update the authenticated user's own profile (name, phone, avatar URL).
 
@@ -304,9 +268,9 @@ authRouter.patch("/password", authenticate, zValidator("json", changePasswordSch
 
   const newHash = await hash(newPassword, BCRYPT_ROUNDS);
 
-  // Re-use updateUser with a raw set — we need to update passwordHash
-  await db.update(users).set({ passwordHash: newHash, updatedAt: new Date() })
-    .where(eq(users.id, userId));
-
-  return success(c, { data: null, message: "Password changed successfully" });
+  const result = await db.execute(changePasswordStatement(userId, user.passwordHash, newHash));
+  if (!result.rows.length) return error(c, "Credentials changed. Please log in again", 409);
+  clearRefreshCookie(c);
+  return success(c, { data: null, message: "Password changed. Please log in again on all devices" });
 });
+

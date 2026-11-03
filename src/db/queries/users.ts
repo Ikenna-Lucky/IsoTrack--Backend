@@ -60,7 +60,7 @@ export async function updateUser(
 // ─── Sanitize ──────────────────────────────────────────────────────────────────
 
 /** Strip sensitive fields before sending to client */
-export function sanitizeUser(user: User): Omit<User, "passwordHash"> {
-  const { passwordHash: _, ...safe } = user;
+export function sanitizeUser(user: User): Omit<User, "passwordHash" | "credentialVersion"> {
+  const { passwordHash: _, credentialVersion: __, ...safe } = user;
   return safe;
 }
