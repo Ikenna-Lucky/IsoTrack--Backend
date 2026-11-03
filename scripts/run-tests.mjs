@@ -28,6 +28,9 @@ const result = spawnSync(
   process.execPath,
   [
     "--test",
+    // Bound simultaneous Docker fixtures on developer machines and CI runners.
+    // Races within each suite still exercise concurrent production requests.
+    ...(suite === "integration" ? ["--test-concurrency=2"] : []),
     "--test-reporter=spec",
     "--test-reporter=junit",
     "--test-reporter-destination=stdout",
@@ -37,7 +40,7 @@ const result = spawnSync(
   {
     cwd: root,
     stdio: "inherit",
-    timeout: suite === "integration" ? 420000 : 60000,
+    timeout: suite === "integration" ? 600000 : 60000,
   },
 );
 let counts = null;

@@ -47,7 +47,7 @@ The existing legacy fleet foreign key remains NOT VALID pending reconciliation.
 ## Local evidence
 
 The migration suite runs the production runner core against disposable PostgreSQL
-17 through a psql adapter. It covers all eight actual migration files, reruns,
+17 through a psql adapter. It covers all checked-in migration files, reruns,
 upgrade from the initial schema with an existing account, historical settings
 omission, failure after pending DDL with full batch rollback, altered/unknown/
 duplicate/gapped history, synchronized concurrent plans and injected loss of a

@@ -1,4 +1,7 @@
 import { createSessionRouter } from "./sessions";
+import { createAccountActionRouter, accountPassword } from "./account-actions";
+import { getConnInfo } from "@hono/node-server/conninfo";
+import { writeStore } from "@/services/write-store";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { setCookie, deleteCookie } from "hono/cookie";
@@ -7,10 +10,7 @@ import { hash, compare } from "bcryptjs";
 import { nanoid } from "nanoid";
 
 import { env } from "@/lib/env";
-import {
-  verifyRefreshToken,
-  refreshTokenMaxAge,
-} from "@/lib/jwt";
+import { verifyRefreshToken, refreshTokenMaxAge } from "@/lib/jwt";
 import { openSession, rotateSession, revokeSession } from "@/lib/sessions";
 import { changePasswordStatement } from "@/db/queries/session-statements";
 import { authenticate } from "@/middleware/auth";
@@ -33,7 +33,11 @@ const BCRYPT_ROUNDS = 12;
 
 // ─── Cookie helpers ───────────────────────────────────────────────────────────
 
-function setRefreshCookie(c: Parameters<typeof setCookie>[0], token: string, maxAge = refreshTokenMaxAge()) {
+function setRefreshCookie(
+  c: Parameters<typeof setCookie>[0],
+  token: string,
+  maxAge = refreshTokenMaxAge(),
+) {
   const isProduction = env.NODE_ENV === "production";
   setCookie(c, REFRESH_COOKIE, token, {
     httpOnly: true,
@@ -57,14 +61,11 @@ const registerSchema = z
       .min(2, "Name must be at least 2 characters")
       .max(100, "Name too long"),
     email: z.string().email("Invalid email address"),
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters")
-      .max(128, "Password too long")
-      .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
-      .regex(/[0-9]/, "Password must contain at least one number"),
+    password: accountPassword,
     role: z.enum(["business", "driver", "customer"], {
-      errorMap: () => ({ message: "Role must be business, driver, or customer" }),
+      errorMap: () => ({
+        message: "Role must be business, driver, or customer",
+      }),
     }),
     phone: z
       .string()
@@ -80,10 +81,18 @@ const registerSchema = z
   .superRefine((data, ctx) => {
     if (data.role === "driver") {
       if (!data.vehicleType) {
-        ctx.addIssue({ code: "custom", path: ["vehicleType"], message: "Vehicle type is required for drivers" });
+        ctx.addIssue({
+          code: "custom",
+          path: ["vehicleType"],
+          message: "Vehicle type is required for drivers",
+        });
       }
       if (!data.vehiclePlate) {
-        ctx.addIssue({ code: "custom", path: ["vehiclePlate"], message: "Vehicle plate is required for drivers" });
+        ctx.addIssue({
+          code: "custom",
+          path: ["vehiclePlate"],
+          message: "Vehicle plate is required for drivers",
+        });
       }
     }
   });
@@ -96,13 +105,24 @@ const loginSchema = z.object({
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export const authRouter = new Hono();
+authRouter.route(
+  "/",
+  createAccountActionRouter({
+    store: writeStore,
+    key: env.ACCOUNT_ACTION_SECRET,
+    peer: (c) => getConnInfo(c).remote.address,
+    reportError: () =>
+      console.error(JSON.stringify({ event: "account_action_failure" })),
+  }),
+);
 
 // ─── POST /auth/register ──────────────────────────────────────────────────────
 
 authRouter.post("/register", zValidator("json", registerSchema), async (c) => {
   const body = c.req.valid("json");
 
-  if (body.role === "driver") return error(c, "Drivers must join through a business invitation", 403);
+  if (body.role === "driver")
+    return error(c, "Drivers must join through a business invitation", 403);
 
   // Check if email already taken
   const existing = await findUserByEmail(body.email);
@@ -134,10 +154,10 @@ authRouter.post("/register", zValidator("json", registerSchema), async (c) => {
     });
   }
 
-
   // Issue tokens
   const session = await openSession(user);
-  if (!session) return error(c, "Account credentials changed. Please log in again", 401);
+  if (!session)
+    return error(c, "Account credentials changed. Please log in again", 401);
   const { accessToken } = session;
   setRefreshCookie(c, session.refreshToken, session.maxAge);
 
@@ -177,7 +197,8 @@ authRouter.post("/login", zValidator("json", loginSchema), async (c) => {
 
   // Issue tokens
   const session = await openSession(user);
-  if (!session) return error(c, "Account credentials changed. Please log in again", 401);
+  if (!session)
+    return error(c, "Account credentials changed. Please log in again", 401);
   const { accessToken } = session;
   setRefreshCookie(c, session.refreshToken, session.maxAge);
 
@@ -192,40 +213,63 @@ authRouter.post("/login", zValidator("json", loginSchema), async (c) => {
 
 // ─── POST /auth/refresh ───────────────────────────────────────────────────────
 
-authRouter.route("/", createSessionRouter({
-  frontendOrigin: new URL(env.FRONTEND_URL).origin,
-  secureCookies: env.NODE_ENV === "production",
-  verify: verifyRefreshToken,
-  findUser: findUserById,
-  rotate: rotateSession,
-  revoke: revokeSession,
-  sanitize: sanitizeUser,
-}));
+authRouter.route(
+  "/",
+  createSessionRouter({
+    frontendOrigin: new URL(env.FRONTEND_URL).origin,
+    secureCookies: env.NODE_ENV === "production",
+    verify: verifyRefreshToken,
+    findUser: findUserById,
+    rotate: rotateSession,
+    revoke: revokeSession,
+    sanitize: sanitizeUser,
+  }),
+);
 // ─── PATCH /auth/me ───────────────────────────────────────────────────────────
 // Update the authenticated user's own profile (name, phone, avatar URL).
 
 const updateMeSchema = z.object({
-  name:             z.string().min(2).max(100).optional(),
-  phone:            z.string().regex(/^\+?[1-9]\d{6,14}$/).optional().or(z.literal("")).or(z.null()),
-  avatar:           z.string().optional().or(z.literal("")).or(z.null()),
-  emergencyContact: z.string().max(20).optional().or(z.literal("")).or(z.null()),
+  name: z.string().min(2).max(100).optional(),
+  phone: z
+    .string()
+    .regex(/^\+?[1-9]\d{6,14}$/)
+    .optional()
+    .or(z.literal(""))
+    .or(z.null()),
+  avatar: z.string().optional().or(z.literal("")).or(z.null()),
+  emergencyContact: z
+    .string()
+    .max(20)
+    .optional()
+    .or(z.literal(""))
+    .or(z.null()),
 });
 
-authRouter.patch("/me", authenticate, zValidator("json", updateMeSchema), async (c) => {
-  const userId = c.get("userId" as never) as string;
-  const body   = c.req.valid("json");
+authRouter.patch(
+  "/me",
+  authenticate,
+  zValidator("json", updateMeSchema),
+  async (c) => {
+    const userId = c.get("userId" as never) as string;
+    const body = c.req.valid("json");
 
-  const updated = await updateUser(userId, {
-    ...(body.name             !== undefined ? { name: body.name }                           : {}),
-    ...(body.phone            !== undefined ? { phone: body.phone || null }                 : {}),
-    ...(body.avatar           !== undefined ? { avatar: body.avatar || null }               : {}),
-    ...(body.emergencyContact !== undefined ? { emergencyContact: body.emergencyContact || null } : {}),
-  });
+    const updated = await updateUser(userId, {
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(body.phone !== undefined ? { phone: body.phone || null } : {}),
+      ...(body.avatar !== undefined ? { avatar: body.avatar || null } : {}),
+      ...(body.emergencyContact !== undefined
+        ? { emergencyContact: body.emergencyContact || null }
+        : {}),
+    });
 
-  if (!updated) return error(c, "User not found", 404);
+    if (!updated) return error(c, "User not found", 404);
 
-  return success(c, { data: sanitizeUser(updated), message: "Profile updated" });
-});
+    return success(c, {
+      data: sanitizeUser(updated),
+      message: "Profile updated",
+    });
+  },
+);
 
 // ─── DELETE /auth/me ──────────────────────────────────────────────────────────
 // Permanently delete the authenticated user and all associated data.
@@ -248,29 +292,34 @@ authRouter.delete("/me", authenticate, async (c) => {
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
-  newPassword: z
-    .string()
-    .min(8, "Password must be at least 8 characters")
-    .max(128)
-    .regex(/[A-Z]/, "Must contain an uppercase letter")
-    .regex(/[0-9]/, "Must contain a number"),
+  newPassword: accountPassword,
 });
 
-authRouter.patch("/password", authenticate, zValidator("json", changePasswordSchema), async (c) => {
-  const userId = c.get("userId" as never) as string;
-  const { currentPassword, newPassword } = c.req.valid("json");
+authRouter.patch(
+  "/password",
+  authenticate,
+  zValidator("json", changePasswordSchema),
+  async (c) => {
+    const userId = c.get("userId" as never) as string;
+    const { currentPassword, newPassword } = c.req.valid("json");
 
-  const user = await findUserById(userId);
-  if (!user) return error(c, "User not found", 404);
+    const user = await findUserById(userId);
+    if (!user) return error(c, "User not found", 404);
 
-  const match = await compare(currentPassword, user.passwordHash);
-  if (!match) return error(c, "Current password is incorrect", 400);
+    const match = await compare(currentPassword, user.passwordHash);
+    if (!match) return error(c, "Current password is incorrect", 400);
 
-  const newHash = await hash(newPassword, BCRYPT_ROUNDS);
+    const newHash = await hash(newPassword, BCRYPT_ROUNDS);
 
-  const result = await db.execute(changePasswordStatement(userId, user.passwordHash, newHash));
-  if (!result.rows.length) return error(c, "Credentials changed. Please log in again", 409);
-  clearRefreshCookie(c);
-  return success(c, { data: null, message: "Password changed. Please log in again on all devices" });
-});
-
+    const result = await db.execute(
+      changePasswordStatement(userId, user.passwordHash, newHash),
+    );
+    if (!result.rows.length)
+      return error(c, "Credentials changed. Please log in again", 409);
+    clearRefreshCookie(c);
+    return success(c, {
+      data: null,
+      message: "Password changed. Please log in again on all devices",
+    });
+  },
+);

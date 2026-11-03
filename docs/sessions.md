@@ -84,3 +84,9 @@ configuration and remote CI remain unverified. Rate limiting, device management,
 session audit telemetry and issuer/audience policy remain future hardening work.
 Socket verification and deployment limits are recorded in tracking.md. No
 production workload capacity is claimed.
+
+Password recovery and email verification now have separate HTTP/database/SMTP
+tests, including signed-session denial after reset and email-change invalidation.
+Their peer/resend budgets apply only to the account-action endpoints; login and
+registration abuse protection remain outstanding. See account-recovery.md for
+the contracts, configuration, frontend adoption and verification boundaries.

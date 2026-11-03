@@ -56,8 +56,9 @@ dead-letter replay, recipient checks and cleanup. Synthetic timestamps accelerat
 lease/backoff expiry; BullMQ stalled-job handling is real. No external email is
 sent and application credentials are not loaded. See docs/notifications.md.
 
-The report runner allows seven minutes for all integration files together. Docker
-must have capacity for the isolated services running in parallel. If interrupted,
+The report runner allows ten minutes for all integration files together and runs
+at most two integration files concurrently. In-suite request races remain concurrent.
+Docker must have capacity for their isolated services. If interrupted,
 inspect only the exact test-container prefixes above before manual cleanup.
 
 The idempotency suite creates `isotrack-idempotency-test-*` PostgreSQL and a loopback
@@ -77,3 +78,11 @@ concurrent plans, history tampering/gaps and a lost commit acknowledgement.
 Temporary journals are isolated under the system temp directory and cleaned up.
 The psql adapter verifies PostgreSQL semantics; actual Neon HTTP and the Bun CLI
 entrypoint against a hosted database remain unverified. See docs/migrations.md.
+
+The account-action suite creates `isotrack-identity-test-*` PostgreSQL, applies the
+complete migration journal through the production runner, starts a real Hono HTTP
+server and a local SMTP sink, and uses the actual socket peer adapter. It verifies
+recovery/verification, bcrypt changes, signed JWT/session revocation, concurrent
+tokens, PostgreSQL resend/peer limits, rollback on notice failure, SMTP exhaustion,
+lease fencing, injected completion loss and cleanup. No application credentials
+or external mail provider are used. See docs/account-recovery.md for boundaries.

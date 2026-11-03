@@ -8,11 +8,11 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **7/10** after request idempotency and migration-runner hardening
-(2026-11-03), up from the prior 6.5/10 assessment. Update this estimate after each
+Current completion estimate: **7.5/10** after password recovery and email verification
+(2026-11-03), up from the prior 7/10 assessment. Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
-critical journeys, identity recovery, remaining write idempotency/versioning, payment lifecycle,
+critical journeys, identity/browser adoption, remaining write idempotency/versioning, payment lifecycle,
 observability, load testing and recovery evidence remain substantial work.
 
 ## Release blockers and work order
@@ -23,12 +23,12 @@ observability, load testing and recovery evidence remain substantial work.
 | Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | Query projection implemented; integration unverified                                                                                                                                                                                                                                     |
 | Private fleets         | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests           | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding                                                                                          |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding                                                                                                                                                 |
-| Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, strict single-use rotation, replay/logout revocation, password/deactivation invalidation and PostgreSQL races verified locally; full login/password HTTP journeys, recovery, verification, browser coordination and deployed evidence outstanding                       |
+| Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, reset/verification HTTP and durable email delivery, credential invalidation and PostgreSQL races verified locally; full login/password journeys, verified-email policy, frontend/browser adoption, provider and deployed evidence outstanding                       |
 | Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/transitions/history are atomic; creation idempotency, rollback/replay and assignment races verified locally; remaining command idempotency/versioning, proof and returns outstanding                                                                                            |
 | Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Signed webhook/atomic confirmation and same-key initialization retries verified locally; reconciliation, distinct-attempt lifecycle, refunds and actual provider sandbox evidence outstanding                                                                                            |
 | Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding            |
 | Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
-| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0007 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
+| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0008 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
 | Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Unverified                                                                                                                                                                                                                                                                               |
 | Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Planned                                                                                                                                                                                                                                                                                  |
 | Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | Planned                                                                                                                                                                                                                                                                                  |
@@ -482,3 +482,61 @@ unverified. Legacy fleet reconciliation and FK validation remain outstanding.
 No production database, credentials, frontend or deployment changed. No new schema
 migration is introduced by this batch. Completion remains **7/10**: this closes a
 specific migration safety gap, while the other release gates above still apply.
+
+## Password recovery and email verification — 2026-11-03
+
+PR-05/06/07/09/10 acceptance: generic request responses, hashed single-use expiring
+links, strict bounded inputs, current-email/credential binding, distributed peer
+and resend limits, atomic reset/token consumption/session invalidation/security
+notice, durable email retries and real HTTP/database/SMTP tests. Migration 0008
+adds the action outbox and budgets, and extends credential invalidation to email
+changes. Reset links expire after 30 minutes and verification after 24 hours.
+Tokens use random 256-bit identifiers and domain-separated HMAC proofs; the
+database stores only the full token hash. Pending email proofs are reconstructed
+with the independent ACCOUNT_ACTION_SECRET. No plaintext token is stored in SQL
+or Redis. Gmail SMTP remains the transactional sender; Resend is unused.
+
+Password reset and its security notice commit together. Current-session predicates
+reject old credentials after reset; other reset/verification links become invalid.
+Concurrency tests cover one token, different reset tokens and repeated verification.
+Account/email state is rechecked at send time, ownership leases fence completion,
+and SMTP retries stop at five attempts. Duplicate email after ambiguous acceptance
+remains possible and is tested with injected completion loss. A separate bounded
+PostgreSQL dispatcher lets identity emails operate without Redis. Status/purge
+commands expose aggregate counts; scheduling and alerts remain deployment work.
+
+Local Windows / Node 24.12.0: lint, types and Bun 1.3.12 build passed; 48 fast tests
+passed. The full six-file integration run passed 114 cases with zero failures,
+skips, todos or cancellations in about 425 seconds. Reports remain in
+reports/unit.* and reports/integration.*. Fifteen new cases exercise the production
+migration runner/SQL, actual PostgreSQL 17, a Hono HTTP server with the real socket
+peer adapter, jose JWT/session checks, bcrypt and a local SMTP sink. Fixtures use
+synthetic accounts; hosted Neon transport and Gmail are not contacted.
+
+The initial focused reset test failed because the test supplied incorrect auth
+dependency names; corrected the harness and verified signed-session denial. The
+first full run subsequently passed 111/114, with three Docker command timeouts
+during a long host delay in identity and unchanged outbox/payment tests. Its
+reports are preserved in reports/integration-before-resource-limit.*. Integration
+files now run at most two at a time, retaining in-suite concurrency tests and
+per-command deadlines. The report runner's total integration budget is ten minutes
+for the expanded suite; CI retains its fifteen-minute job budget. No assertion,
+skip or automatic retry was used to hide these failures.
+
+After the full pass, a final review tightened rate-window monotonicity so delayed
+older statements cannot rewind an advanced peer/account counter. Reran all fifteen
+identity integration cases, including new SQL/HTTP regressions for that boundary:
+15 passed, zero failures/skips/todos/cancellations. Validated separate JUnit/JSON
+evidence is in reports/account-actions-final.*. The final bundle also passed.
+All local reports explicitly use commit=null; remote Actions remains unverified.
+
+Rollout requires migration 0008, ACCOUNT_ACTION_SECRET and trusted frontend/proxy
+configuration. Missing configuration disables only these new endpoints/dispatcher.
+Registration does not automatically request verification yet: the frontend must
+call the request endpoint and implement fragment-link confirmation pages. Verified-
+email authorization rules, existing-account rollout, login/register abuse controls,
+edge/provider-wide budgets, real Gmail delivery, browser journeys, deployed Bun/
+Neon, telemetry and recovery/capacity evidence remain release gates. See
+docs/account-recovery.md for exact contracts and limitations. No frontend, live
+database, external email account or deployment was modified. Completion estimate:
+**7.5/10**, a scoped planning estimate rather than release approval.

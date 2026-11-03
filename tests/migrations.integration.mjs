@@ -48,7 +48,7 @@ async function copyJournal(count, extra = false) {
     journal.entries.push({
       idx: count,
       version: "7",
-      when: 1793664000004,
+      when: Math.max(...migrations.map((entry) => entry.folderMillis)) + 1,
       tag: "failure",
       breakpoints: true,
     });
@@ -85,15 +85,15 @@ beforeEach(async () => {
 });
 
 test("fresh install runs every migration and repeated runs preserve history", async () => {
-  assert.equal(await runMigrations(store, folder), 8);
+  assert.equal(await runMigrations(store, folder), migrations.length);
   assert.equal(
     await query("select count(*) from drizzle.__drizzle_migrations"),
-    "8",
+    String(migrations.length),
   );
   assert.equal(await runMigrations(store, folder), 0);
   assert.equal(
     await query("select count(*) from drizzle.__drizzle_migrations"),
-    "8",
+    String(migrations.length),
   );
   assert.equal(
     await query("select to_regclass('public.idempotency_requests')"),
@@ -112,7 +112,7 @@ test("upgrade preserves existing accounts and installs later schema", async () =
   await query(
     "insert into users(id,email,password_hash,name,role) values('existing','old@example.test','hash','Existing','customer')",
   );
-  assert.equal(await runMigrations(store, folder), 7);
+  assert.equal(await runMigrations(store, folder), migrations.length - 1);
   assert.equal(
     await query(
       "select name || ':' || credential_version from users where id='existing'",
@@ -143,7 +143,7 @@ test("repairs historical settings omission without timestamp reordering", async 
 test("failure rolls back all pending schema, data and history, then retry succeeds", async () => {
   await runMigrations(store, await copyJournal(1));
   await assert.rejects(
-    runMigrations(store, await copyJournal(8, true)),
+    runMigrations(store, await copyJournal(migrations.length, true)),
     /division by zero/,
   );
   assert.equal(
@@ -156,12 +156,12 @@ test("failure rolls back all pending schema, data and history, then retry succee
     ),
     "t",
   );
-  assert.equal(await runMigrations(store, folder), 7);
+  assert.equal(await runMigrations(store, folder), migrations.length - 1);
 });
 
 test("changed files, unknown history, duplicate history and gaps fail closed", async () => {
   await runMigrations(store, folder);
-  const changed = await copyJournal(8);
+  const changed = await copyJournal(migrations.length);
   const first = join(changed, "0000_graceful_the_enforcers.sql");
   await writeFile(first, `${await readFile(first, "utf8")}\n-- edited\n`);
   await assert.rejects(
@@ -191,7 +191,7 @@ test("changed files, unknown history, duplicate history and gaps fail closed", a
   await assert.rejects(runMigrations(store, folder), /history contains a gap/);
   assert.equal(
     await query("select count(*) from drizzle.__drizzle_migrations"),
-    "7",
+    String(migrations.length - 1),
   );
 });
 
@@ -225,7 +225,7 @@ test("concurrent runners cannot apply the same pending migration twice", async (
   );
   assert.equal(
     await query("select count(*) from drizzle.__drizzle_migrations"),
-    "8",
+    String(migrations.length),
   );
   assert.equal(await runMigrations(store, folder), 0);
 });
@@ -246,6 +246,6 @@ test("lost commit acknowledgement is recovered by reading durable history", asyn
   assert.equal(await runMigrations(store, folder), 0);
   assert.equal(
     await query("select count(*) from drizzle.__drizzle_migrations"),
-    "8",
+    String(migrations.length),
   );
 });

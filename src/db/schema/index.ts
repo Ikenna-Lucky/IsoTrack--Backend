@@ -4,6 +4,7 @@ export * from "./enums";
 // Tables
 export * from "./users";
 export * from "./auth-sessions";
+export * from "./account-actions";
 export * from "./businesses";
 export * from "./drivers";
 export * from "./shipments";

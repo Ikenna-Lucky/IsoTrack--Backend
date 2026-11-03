@@ -57,6 +57,13 @@
       "when": 1793664000003,
       "tag": "0007_request_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793664000004,
+      "tag": "0008_account_actions",
+      "breakpoints": true
     }
   ]
 }

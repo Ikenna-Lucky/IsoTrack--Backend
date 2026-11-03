@@ -3,6 +3,10 @@ import { env } from "@/lib/env";
 import { outboxStore } from "@/db/outbox-store";
 import { renderNotificationEmail } from "@/lib/notification-email";
 import { createOutboxRuntime } from "./outbox-runtime";
+import {
+  createAccountEmailProcessor,
+  startAccountEmailDispatcher,
+} from "./account-email";
 
 export function startNotificationWorker() {
   const transporter = nodemailer.createTransport({
@@ -15,7 +19,7 @@ export function startNotificationWorker() {
     socketTimeout: 10000,
     auth: { user: env.GMAIL_USER, pass: env.GMAIL_APP_PASSWORD },
   });
-  return createOutboxRuntime(
+  const runtime = createOutboxRuntime(
     outboxStore,
     env.UPSTASH_REDIS_URL,
     async (email) => {
@@ -29,4 +33,33 @@ export function startNotificationWorker() {
         JSON.stringify({ event: "notification_failure", operation }),
       ),
   );
+  const closeAccountEmails = env.ACCOUNT_ACTION_SECRET
+    ? startAccountEmailDispatcher(
+        createAccountEmailProcessor(
+          outboxStore,
+          env.ACCOUNT_ACTION_SECRET,
+          env.FRONTEND_URL,
+          async (email) => {
+            await transporter.sendMail({ from: env.EMAIL_FROM, ...email });
+          },
+        ),
+        () =>
+          console.error(
+            JSON.stringify({ event: "account_email_dispatch_failure" }),
+          ),
+      )
+    : async () => {};
+  if (!env.ACCOUNT_ACTION_SECRET)
+    console.error(
+      JSON.stringify({
+        event: "account_actions_disabled",
+        reason: "missing_key",
+      }),
+    );
+  return {
+    close: async () => {
+      await Promise.all([runtime.close(), closeAccountEmails()]);
+      transporter.close();
+    },
+  };
 }
