@@ -205,7 +205,7 @@ authRouter.post("/refresh", async (c) => {
   try {
     const payload = await verifyRefreshToken(refreshToken);
 
-    const user = await findUserById(payload.sub!);
+    const user = await findUserById(payload.sub);
     if (!user || !user.isActive) {
       clearRefreshCookie(c);
       return error(c, "Session expired", 401);

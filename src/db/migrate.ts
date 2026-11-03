@@ -37,4 +37,7 @@ async function runMigrations(): Promise<void> {
   }
 }
 
-runMigrations();
+runMigrations().catch((error: unknown) => {
+  console.error("Migration runner failed:", error);
+  process.exitCode = 1;
+});

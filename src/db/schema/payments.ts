@@ -10,7 +10,9 @@ export const payments = pgTable(
     shipmentId: text("shipment_id")
       .notNull()
       .references(() => shipments.id, { onDelete: "restrict" }),
-    paystackReference: text("paystack_reference").unique(),
+    reference: text("provider_reference").unique(),
+    provider: text("provider").default("stripe").notNull(),
+    stripeSessionId: text("stripe_session_id").unique(),
     amountKobo: integer("amount_kobo").notNull(),
     status: paymentStatusEnum("status").default("pending").notNull(),
     channel: text("channel"), // card, bank, ussd, etc.
@@ -25,7 +27,7 @@ export const payments = pgTable(
   (t) => [
     index("payments_shipment_id_idx").on(t.shipmentId),
     index("payments_status_idx").on(t.status),
-    index("payments_paystack_reference_idx").on(t.paystackReference),
+    index("payments_provider_reference_idx").on(t.reference),
   ],
 );
 

@@ -1,5 +1,10 @@
 # Backend tests
 
+`npm run test:unit` and `npm run test:integration` now generate and validate JUnit
+and JSON reports in `reports/`. They fail on missing/empty results, failures,
+cancellations, skips or todos. CI uses these same commands. See `docs/ci.md` for
+required checks, artifact details and current evidence.
+
 Run `npm run test:unit` with Node 24.12.0 or the CI-pinned version.
 
 Run `npm run test:integration` with Docker running. The integration suite pulls

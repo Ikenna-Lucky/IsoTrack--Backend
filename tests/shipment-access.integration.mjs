@@ -30,8 +30,9 @@ import { SignJWT } from "jose";
 import { createAuthenticationMiddleware } from "../src/middleware/authentication.ts";
 import { verifySessionToken } from "../src/lib/token-verification.ts";
 import { confirmPaymentStatement } from "../src/db/queries/confirm-payment.ts";
-import { createPaystackWebhookRouter } from "../src/routes/paystack-webhook.ts";
-import { createHmac } from "node:crypto";
+import { createStripeWebhookRouter } from "../src/routes/stripe-webhook.ts";
+import Stripe from "stripe";
+import { parseStripeSession } from "../src/lib/stripe-payload.ts";
 
 const container = `isotrack-access-test-${randomUUID()}`;
 const image = "postgres:17-alpine";
@@ -970,13 +971,23 @@ test("failed initial history rolls back shipment creation", () => {
   );
 });
 
+test("Stripe migration preserves existing references as legacy and defaults new records to Stripe", () => {
+  shipmentFixture("legacy-payment");
+  const prior = JSON.parse(readFileSync(new URL("../drizzle/meta/0003_snapshot.json", import.meta.url), "utf8"));
+  const legacyColumn = Object.keys(prior.tables["public.payments"].columns).find((key) => key.endsWith("_reference"));
+  query(inMigrationSchema(sql`insert into payments(id,shipment_id,${sql.identifier(legacyColumn)},amount_kobo)
+    values ('legacy-payment','legacy-payment','LEGACY-REF',100)`));
+  query(inMigrationSchema(sql.raw(readFileSync(new URL("../drizzle/0004_stripe_checkout.sql", import.meta.url), "utf8"))));
+  assert.equal(query(inMigrationSchema(sql`select provider_reference,provider from payments where id='legacy-payment'`)), "LEGACY-REF|legacy");
+});
+
 function paymentFixture(id) {
   shipmentFixture(id);
-  query(inMigrationSchema(sql`insert into payments(id,shipment_id,paystack_reference,amount_kobo)
+  query(inMigrationSchema(sql`insert into payments(id,shipment_id,provider_reference,amount_kobo)
     values (${id},${id},${`REF-${id}`},100)`));
 }
 function paymentConfirmation(id, overrides = {}) {
-  return inMigrationSchema(confirmPaymentStatement({ reference: `REF-${id}`, amountKobo: 100,
+  return inMigrationSchema(confirmPaymentStatement({ reference: `REF-${id}`, sessionId: `cs_test_${id}`, amountKobo: 100,
     currency: "NGN", channel: "card", paidAt: "2026-11-03T00:00:00.000Z", ...overrides }));
 }
 
@@ -1030,13 +1041,22 @@ test("concurrent webhook and verification confirmation converge on one paid stat
 test("signed webhook HTTP handler confirms and replays against real PostgreSQL", async () => {
   paymentFixture("payment-http");
   const secret = "isolated-webhook-integration-key";
-  const router = createPaystackWebhookRouter({ secret, confirm: async (payment) =>
+  const router = createStripeWebhookRouter({ secret, expectedLiveMode: false,
+    parseSession: (session, paidAt) => parseStripeSession(session, undefined, paidAt), confirm: async (payment) =>
     Boolean(query(inMigrationSchema(confirmPaymentStatement(payment)))) });
-  const body = JSON.stringify({ event: "charge.success", data: { reference: "REF-payment-http", status: "success",
-    amount: 100, currency: "NGN", channel: "card", paid_at: "2026-11-03T00:00:00.000Z" } });
+  const body = JSON.stringify({ id: "evt_http", object: "event", created: Math.floor(Date.now()/1000), livemode: false,
+    type: "checkout.session.completed", data: { object: { id: "cs_test_payment-http", object: "checkout.session", mode: "payment",
+      client_reference_id: "REF-payment-http", metadata: { reference: "REF-payment-http" }, status: "complete",
+      payment_status: "paid", amount_total: 100, currency: "ngn" } } });
   const send = () => router.request("/webhook", { method: "POST", body,
-    headers: { "x-paystack-signature": createHmac("sha512", secret).update(body).digest("hex") } });
+    headers: { "stripe-signature": Stripe.webhooks.generateTestHeaderString({ payload: body, secret }) } });
   assert.equal((await send()).status, 200);
   assert.equal((await send()).status, 200);
   assert.equal(query(inMigrationSchema(sql`select is_paid from shipments where id='payment-http'`)), "t");
+});
+
+test("Stripe cannot settle legacy records or reuse a reference with a different session", () => {
+  assert.equal(query(inMigrationSchema(confirmPaymentStatement({ reference: "LEGACY-REF", sessionId: "cs_test_legacy",
+    amountKobo: 100, currency: "NGN", channel: "stripe_checkout", paidAt: "2026-11-03T00:00:00Z" }))), "");
+  assert.equal(query(paymentConfirmation("payment-success", { sessionId: "cs_test_different" })), "");
 });

@@ -1,60 +1,84 @@
-# Payment confirmation
+# Stripe Checkout
 
-`POST /api/v1/payments/webhook` is public and validates the exact request bytes
-with HMAC-SHA512 and a timing-safe comparison before parsing or processing. It
-requires a configured Paystack secret, limits requests to 256 KiB, rejects invalid
-signatures and malformed success events, and ignores unsupported signed events.
-Other payment routes require an authenticated business or customer account.
+IsoTrack uses Stripe-hosted Checkout for one-time NGN shipment payments. The
+backend creates the session and the frontend redirects to its hosted URL. No
+publishable key, Stripe.js script, product ID or price ID is needed for this flow.
+Amounts remain NGN minor units (kobo); no currency conversion is performed.
 
-Signature and response behavior were checked against
-[Paystack webhook documentation](https://paystack.com/docs/payments/webhooks/).
-Provider success verification follows the distinction between transport success
-and transaction success in
-[Paystack verification documentation](https://paystack.com/docs/payments/verify-payments/).
+## Dashboard and environment setup
 
-## Confirmation invariant
+Select a Stripe sandbox and obtain a secret API key from
+[API keys](https://dashboard.stripe.com/apikeys). Configure the backend `.env`:
 
-Webhook success and manual verification share a PostgreSQL confirmation statement.
-It locks the payment and shipment, checks the reference, initialized amount,
-current shipment price and supported currency (NGN), then writes payment success
-and the shipment paid flag atomically. A storage failure rolls back both writes.
-Repeated success preserves the first channel and payment timestamp. Refunded or
-failed local payments are not converted back to success by an old callback.
-This is repeat-safe confirmation, not a general payment event ledger.
+```dotenv
+STRIPE_SECRET_KEY=sk_test_REPLACE_ME
+STRIPE_WEBHOOK_SECRET=whsec_REPLACE_ME
+FRONTEND_URL=http://localhost:3000
+```
 
-An unmatched successful webhook receives 409; a storage failure receives 500,
-allowing provider retry. No success acknowledgment occurs before database commit.
-Unknown references and amount/currency mismatches require operational investigation;
-monitoring and reconciliation remain required before release.
+In Workbench / Webhooks, add an event destination for **your account**, using
+snapshot events and API version **2026-10-28.endive** (the installed SDK's version).
+Subscribe to:
 
-## Initialization and manual verification
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
 
-Initialization authorizes the shipment and stores a pending reference before
-calling Paystack, avoiding a webhook arriving before the local record exists.
-Provider requests have a 10-second deadline and validate response shape/reference.
-Provider failure or timeout leaves a pending record for future reconciliation.
+For deployment set its public HTTPS URL to
+`https://YOUR_API_HOST/api/v1/payments/webhook`. Reveal that endpoint's signing
+secret and set `STRIPE_WEBHOOK_SECRET`. This secret is separate from the API key.
+Use keys and webhook destinations from the same sandbox or live environment.
 
-Manual verification resolves the local payment and checks shipment access before
-contacting the provider. Successful responses require a complete receipt, matching
-reference, and successful atomic confirmation. Pending/failed responses do not
-require a paid receipt and cannot mark anything paid. A reversed provider response
-does not itself implement a refund or reverse local accounting.
+For local development, install the Stripe CLI, log in, and run:
 
-## Evidence and limits
+```sh
+stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded --forward-to localhost:8000/api/v1/payments/webhook
+```
 
-Fast HTTP tests cover signatures, byte changes, malformed payloads, user-auth
-boundary, body limits and storage/unmatched errors. PostgreSQL tests cover paired
-updates, duplicate receipts, mismatches, refunded state, forced rollback, competing
-confirmations and signed HTTP webhook persistence/replay.
+Use the **whsec_ printed by this CLI command** locally, not the Dashboard endpoint's
+secret. Restart the backend after changing `.env`. The CLI forwards events to the
+local backend; Dashboard destinations cannot directly reach localhost. Test with
+Stripe's documented test cards in the actual Checkout flow after setup.
 
-Tests use locally generated signatures and psql execution of production SQL, not
-real Paystack sandbox requests or deployed Neon HTTP. Full initialization/manual
-verification HTTP journeys and deployed routing still require verification.
+## Migration and API
 
-Outstanding release work includes initialization idempotency and duplicate-charge
-handling, provider reconciliation, durable event/audit records, refunds/disputes,
-abuse controls, alerting, and the payment recipient/settlement product model.
-Do not blindly repeat initialization after a timeout: multiple pending references
-can represent multiple payment attempts. There is no promise of exactly-once
-charging or complete financial accounting. No migration was needed and no live
-payment or application database operation was performed during this batch.
+Apply `0004_stripe_checkout` before running the updated application. It renames
+the legacy reference column/index/constraint without losing values, marks existing
+records `legacy`, defaults future rows to `stripe`, and adds unique session IDs.
+Historic migration SQL and snapshots retain the former provider names because
+rewriting applied migrations would corrupt the migration history. No live migration
+was performed during development.
+
+- `POST /payments/initialize` authorizes the business/customer's shipment, saves a
+  pending reference, creates Checkout with a Stripe idempotency key, and saves the
+  session ID. Returns `reference`, `authorizationUrl`, `sessionId`, `amountKobo`.
+- `GET /payments/verify/:reference` checks ownership, retrieves the stored Checkout
+  Session using the server key, and confirms only paid, complete, correctly bound
+  sessions. A redirect parameter alone never proves payment.
+- `POST /payments/webhook` is public, verifies the raw body with the official SDK,
+  checks timestamp tolerance and environment mode, and handles both supported
+  Checkout events. Unpaid completion is acknowledged without marking paid.
+
+Webhook confirmation and verification share an atomic, locked PostgreSQL statement
+checking provider, reference, session binding, amount, NGN currency, shipment price
+and local payment state. Duplicate confirmations preserve the first receipt;
+legacy/refunded payments cannot be confirmed as new Stripe payments. A mismatch
+returns non-success for investigation/retry. The stored paid timestamp represents
+the first confirmed success event or server verification, not a card settlement date.
+
+## Verification and release limits
+
+Official SDK test signatures and disposable PostgreSQL verify webhook behavior,
+atomic writes, concurrency, migration preservation and replay. Stripe network calls,
+actual Checkout UI, redirects in a browser and dashboard event delivery still need
+a sandbox run after the keys are configured. Type checks do not prove those flows.
+
+Stripe's idempotency key currently protects retries of one SDK request. Repeated
+calls to initialization create new local references; application-level idempotency,
+reconciliation, refunds/disputes, event/audit history, abuse controls and operational
+alerts remain release work. Pending sessions after provider/storage failures need
+reconciliation. Private-fleet settlement recipients/Stripe Connect remain a product
+decision, not an implemented marketplace payout system.
+
+Sources: [Checkout fulfillment](https://docs.stripe.com/checkout/fulfillment.md?ui=full-page),
+[webhook signature verification](https://docs.stripe.com/events/manage-webhook-endpoints#signature-errors),
+[API keys](https://docs.stripe.com/keys).

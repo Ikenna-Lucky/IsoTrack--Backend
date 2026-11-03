@@ -117,7 +117,7 @@ function shipmentFromDatabaseJson(row: Record<string, unknown>): Shipment {
     key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()), value,
   ]));
   for (const key of ["scheduledPickup", "actualPickup", "estimatedDelivery", "actualDelivery", "createdAt", "updatedAt"]) {
-    if (typeof mapped[key] === "string") mapped[key] = new Date(mapped[key] as string);
+    if (typeof mapped[key] === "string") mapped[key] = new Date(mapped[key]);
   }
   return mapped as unknown as Shipment;
 }

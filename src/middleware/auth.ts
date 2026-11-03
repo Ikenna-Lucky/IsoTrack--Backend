@@ -19,7 +19,7 @@ export const authenticate = createAuthenticationMiddleware({
 // Role-based access guard
 export const requireRole = (...roles: UserRole[]) =>
   createMiddleware(async (c: Context, next: Next) => {
-    const role = c.get("userRole") as UserRole;
+    const role = c.get("userRole");
     if (!roles.includes(role)) {
       throw new HTTPException(403, {
         message: `Access denied. Required role: ${roles.join(" or ")}`,

@@ -29,6 +29,13 @@
       "when": 1793491200001,
       "tag": "0003_driver_invitations",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793664000000,
+      "tag": "0004_stripe_checkout",
+      "breakpoints": true
     }
   ]
 }

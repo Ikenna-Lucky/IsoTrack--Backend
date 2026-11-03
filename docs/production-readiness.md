@@ -12,7 +12,7 @@ must be established by measurement. Do not use paid services without approval.
 
 | Workstream | Acceptance criteria | Current status |
 | --- | --- | --- |
-| Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports | Initial GitHub workflow added; not executed remotely; lint and integration gates outstanding |
+| Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports | Lint/types/build, report validation and PostgreSQL suites pass locally and clean Windows install; GitHub/Linux verification, Redis integration and repository merge rules outstanding |
 | Response privacy | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles | Query projection implemented; integration unverified |
 | Private fleets | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding |
@@ -197,7 +197,7 @@ payment routes with business/customer authentication. Added raw-byte HMAC-SHA512
 verification, bounded bodies, schema validation, fail-closed missing configuration
 and non-success acknowledgment for unrecorded successes. Initialization now stores
 a pending reference before contacting the provider and validates its response.
-Manual verification checks local ownership before contacting Paystack. Provider
+Manual verification checks local ownership before contacting previous provider. Provider
 requests have a bounded deadline.
 
 Webhook and verification share a locked, atomic PostgreSQL confirmation statement
@@ -211,9 +211,67 @@ and competing webhook/verification confirmation. A fast-test harness initially
 mapped Hono's body-limit HTTPException to 500; aligned its exception handling with
 the application and verified the intended 413 response.
 
-Official Paystack webhook/verification docs were consulted. Test signatures and
+Official previous provider webhook/verification docs were consulted. Test signatures and
 provider response fixtures are local; no sandbox or live transaction was made.
 The SQL adapter uses psql, not deployed Neon HTTP. Initialization and verification
 full HTTP/provider journeys, reconciliation, refunds, duplicate-charge handling,
 initialization idempotency, operational alerts and remote CI remain unverified or
 outstanding. No migration or live application database change was required.
+
+## Stripe Checkout replacement — 2026-11-03
+
+Replaced the active provider integration with official Stripe SDK 23.1.0 and
+Stripe-hosted Checkout, pinned API version 2026-10-28.endive. Backend configuration
+now uses STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET. Removed the former popup and
+public key from the frontend; it redirects to hosted Checkout and verifies the
+returned local reference through the backend. Redirect destinations are restricted
+to the HTTPS Stripe checkout origin. Active source, tests and docs use Stripe.
+
+Migration 0004 renames the reference column/index/constraint, preserves old values
+as provider=legacy, defaults new rows to Stripe and adds a unique session ID.
+Historical migrations/snapshots retain their old names deliberately. Confirmation
+binds session ID/reference/amount/currency/provider and refuses legacy records.
+Official SDK signature verification checks raw bytes, timestamp tolerance and
+sandbox/live mode. Both paid completion events are handled; unpaid completion
+cannot mark a shipment paid. Frontend redirects alone are not trusted.
+
+Evidence: backend/frontend type checks passed; 23 backend fast tests and 2 frontend
+checkout-URL tests passed. PostgreSQL integration: 40 passed, 0 failed/skipped,
+including actual migration preservation, session binding, signed Stripe HTTP event
+replay, rollback and concurrency. Backend production bundle passed with Bun 1.3.12;
+CI runtime now matches that version. Frontend production build passed again after the final redirect-validation change.
+
+No Stripe network payment or live database migration was performed. API keys are
+blank in local/example configuration pending user setup; no credentials were copied
+from the prior provider. Stripe Dashboard/CLI sandbox delivery, actual Checkout UI,
+full browser return journeys and deployed Neon transport remain unverified. See
+docs/payments.md for exact Dashboard settings, env values and migration requirements.
+Initialization still needs application-level retry idempotency, reconciliation,
+refund/dispute handling, operational alerting and fleet settlement decisions.
+
+## Backend CI and report integrity — 2026-11-03
+
+Added a working ESLint flat configuration with declared/locked TypeScript tooling,
+recommended rules and type-aware promise/assertion checks. Fixed nine reported
+issues: an unhandled migration-runner rejection, redundant assertions and unused
+worker imports. No lint rules were disabled to suppress those findings.
+
+CI now requires lint, types and build and uses the same report-generating test
+commands as local development. Runners reject zero discovery, nonzero child exit,
+missing/truncated reports, failures, cancellations, skips and todos. JUnit and JSON
+metadata are retained as Actions artifacts; report validation has regression tests.
+Local JSON records commit=null explicitly; CI supplies GITHUB_SHA. Branch protection
+and deployment configuration were not changed.
+
+Evidence: lint/types passed, 27 fast tests and 40 real PostgreSQL integration tests
+passed with no failures/skips/todos. Main reports were generated and validated.
+A separate Windows copy with no .env/Git/existing node_modules installed all 263
+packages from the frozen lockfile and passed lint/types/build plus 27 fast tests.
+Its reports and lockfile hash are saved under reports/clean-install*. The temporary
+source/dependency copy was removed after verification.
+
+A clean Linux Docker attempt failed before installation because the registry host
+could not resolve. Linux behavior and actual GitHub Actions execution remain
+unverified; no clean Linux pass is claimed. Full release work still includes
+repository required-check rules, security scans, Redis tests, deployed verification
+and CD/recovery gates. Only backend files changed in this batch.

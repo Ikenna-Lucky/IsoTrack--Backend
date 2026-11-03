@@ -1,10 +1,6 @@
 import { Worker } from "bullmq";
-import { eq } from "drizzle-orm";
 import { redis } from "@/lib/queue";
 import { sendShipmentMilestoneEmail } from "@/lib/email";
-import { createInAppNotification, shipmentNotificationContent } from "@/lib/notifications";
-import { db } from "@/db";
-import { businesses } from "@/db/schema";
 import type { NotificationJob } from "@/lib/queue";
 
 export function startNotificationWorker(): Worker {
