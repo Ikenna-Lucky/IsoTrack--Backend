@@ -8,12 +8,12 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8/10** after payment lifecycle, duplicate collection controls and local observability
+Current completion estimate: **8/10** after payment lifecycle, duplicate collection controls and local observability/recovery
 (2026-11-04). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
 critical journeys, identity/browser adoption, remaining write idempotency/versioning, provider sandbox/payment policy,
-deployed observability, load testing and recovery evidence remain substantial work.
+deployed observability, load testing and hosted recovery evidence remain substantial work.
 
 ## Release blockers and work order
 
@@ -31,7 +31,7 @@ deployed observability, load testing and recovery evidence remain substantial wo
 | Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0010 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
 | Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Unverified                                                                                                                                                                                                                                                                               |
 | Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Planned                                                                                                                                                                                                                                                                                  |
-| Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 58 fast, 143 existing integration and six monitoring cases verified across full/recheck runs; last full report retains two image-download failures; deployed receivers/log retention, host monitoring and restore/incident rehearsal outstanding |
+| Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 58 fast, 143 existing integration and six monitoring cases verified across full/recheck runs; last full report retains two image-download failures; deployed receivers/log retention, local three-case PostgreSQL recovery verified; host monitoring and hosted restore/incident rehearsal outstanding |
 | Data lifecycle         | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules             | Planned                                                                                                                                                                                                                                                                                  |
 
 ## Evidence policy
@@ -735,3 +735,38 @@ local setup and response procedures. Complete Bun entrypoint/hosted Neon, ingres
 provider journeys, remote CI, deployed log/alert routing, overhead/load, operating
 ownership and restoration remain release gates. Completion remains **8/10** while
 those material operational and release checks are outstanding.
+
+## Local database recovery — 2026-11-04
+
+PR-09/19 acceptance: an actual logical backup restores all migrated fixture data
+and migration history into a separate PostgreSQL 17 database with the original
+source unavailable. Credential/session checks, completed idempotency state,
+shipment/history/outbox writes and payment receipt invariants must remain usable.
+Corrupt input must fail without application tables, and a populated destination
+must be refused. The small-fixture restore plus verification budget is 120 seconds;
+this is not a hosted service RTO or production capacity estimate.
+
+Implemented `npm run recovery:drill` using actual pg_dump/pg_restore, two disposable
+Docker containers, synthetic data and the production migration runner/SQL. No .env,
+live database, external provider or recipient is used. The normal integration
+discovery includes the same three cases and CI retains their evidence. Archives
+remain bounded fixture memory, not stored backup artifacts. See docs/recovery.md
+for exact timing scope, evidence, operator procedure and side-effect reconciliation.
+
+Final verification: all three recovery cases passed without skips, todos or
+cancellations in 53.814 seconds, ending 2026-11-04T08:34:06.495Z on Windows/Node
+24.12.0 with PostgreSQL 17. The source was stopped/removed before restore. Backup
+took 931 ms, producing a 66,354-byte custom archive; restore plus application
+primitive verification took 16,041 ms against the 120-second local budget.
+Validated JUnit/JSON and detailed measurements are in reports/recovery.* and
+reports/recovery-measurements.json; local commit=null. All 58 fast cases and lint
+passed again; types passed earlier in this build. Full integration and remote CI
+were not rerun for this isolated drill; existing runtime code is unchanged.
+The initial three-case pass preceded the source-removal strengthening and is not
+used as evidence of that condition. An earlier sandbox-denied Docker run is retained in
+reports/recovery-sandbox-denied.* and is not counted as a test pass.
+
+Production backup scheduling, encrypted independent retention, hosting support,
+agreed RPO/RTO, realistic restore volume, revoked-session/token handling, external
+payment/email reconciliation and a full deployed cutover remain unverified.
+Completion remains **8/10**; local recovery evidence does not clear those gates.

@@ -107,3 +107,12 @@ minute. Temporary configurations, Docker network and containers are cleaned up.
 The runner limits file concurrency to two and the full suite to fifteen minutes.
 Cold image downloads need a working Docker registry connection. See
 docs/observability.md for exact metric and deployed-verification limits.
+
+The recovery suite creates two independent, unexposed PostgreSQL containers with
+`isotrack-recovery-source-test-*` and `isotrack-recovery-target-test-*` names. It
+backs up synthetic migrated data with actual pg_dump, removes the source, restores
+with pg_restore and verifies content plus application database primitives. It also
+rejects corruption and a populated target. Run `npm run recovery:drill` for focused
+JUnit/JSON and timing evidence; these cases also run in the normal integration
+suite. No application environment or external service is used. See docs/recovery.md
+for scope, local time budget and remaining deployment recovery requirements.

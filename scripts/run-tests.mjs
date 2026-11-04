@@ -11,12 +11,16 @@ import { spawnSync } from "node:child_process";
 import { requirePassingReport } from "./test-report.mjs";
 
 const suite = process.argv[2];
-if (!["unit", "integration"].includes(suite))
-  throw new Error("Expected unit or integration suite");
+if (!["unit", "integration", "recovery"].includes(suite))
+  throw new Error("Expected unit, integration or recovery suite");
 const root = fileURLToPath(new URL("../", import.meta.url));
 const suffix = suite === "unit" ? ".test.mjs" : ".integration.mjs";
 const files = readdirSync(resolve(root, "tests"))
-  .filter((file) => file.endsWith(suffix))
+  .filter((file) =>
+    suite === "recovery"
+      ? file === "recovery.integration.mjs"
+      : file.endsWith(suffix),
+  )
   .sort()
   .map((file) => resolve(root, "tests", file));
 if (!files.length) throw new Error(`No ${suite} test files discovered`);
@@ -40,7 +44,8 @@ const result = spawnSync(
   {
     cwd: root,
     stdio: "inherit",
-    timeout: suite === "integration" ? 900000 : 60000,
+    timeout:
+      suite === "integration" ? 900000 : suite === "recovery" ? 300000 : 60000,
   },
 );
 let counts = null;
