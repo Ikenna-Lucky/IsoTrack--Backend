@@ -26,13 +26,13 @@ event failure, competing assignment/cancellation, denial without history, fleet
 and active-driver checks, and retry cleanup. Full shipment HTTP route coverage and
 the deployed Neon transport remain unverified.
 
-This is expected-status concurrency control, not request idempotency or a complete
-version history. A status that cycles back can match an older request; durable
-idempotency keys and version-aware updates remain release work. Event IDs are
-generated per request, not supplied as idempotency keys.
+The original helper described above uses expected-status concurrency control.
+Public update routes now use durable idempotency and a workflow version instead;
+see [shipment commands](shipment-commands.md). The version trigger also advances
+for internal helper updates. Event IDs remain server-generated.
 
-Notifications still happen after commit and can fail independently. Durable
-notification dispatch/outbox and recovery remain required. A later dependency
-failure may produce an error after the shipment write committed; clients must not
-blindly repeat creation. Driver workload limits and delivery proof are separate
-business rules. No database migration is required for this batch.
+The later durable outbox migration captures notices transactionally. Delivery
+happens asynchronously and has independent retry/recovery behavior. Creation and
+update retries must use their original idempotency key. Driver workload limits,
+delivery proof and hosted verification remain separate work. The command build
+requires migration 0011; the original helper batch did not require a migration.

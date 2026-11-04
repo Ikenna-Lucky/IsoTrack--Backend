@@ -8,8 +8,9 @@ import {
   jsonb,
   index,
   foreignKey,
+  check,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { shipmentStatusEnum } from "./enums";
 import { users } from "./users";
 import { businesses } from "./businesses";
@@ -23,6 +24,7 @@ export const shipments = pgTable(
     id: text("id").primaryKey(),
     trackingId: text("tracking_id").notNull().unique(),
     status: shipmentStatusEnum("status").default("pending").notNull(),
+    version: integer("version").default(0).notNull(),
 
     // Parties
     businessId: text("business_id")
@@ -63,6 +65,7 @@ export const shipments = pgTable(
       .notNull(),
   },
   (t) => [
+    check("shipments_version_check", sql`${t.version} >= 0`),
     foreignKey({
       name: "shipments_driver_business_fk",
       columns: [t.driverId, t.businessId],

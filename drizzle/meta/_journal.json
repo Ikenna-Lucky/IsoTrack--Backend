@@ -78,6 +78,13 @@
       "when": 1793664000006,
       "tag": "0010_operational_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793664000007,
+      "tag": "0011_shipment_commands",
+      "breakpoints": true
     }
   ]
 }

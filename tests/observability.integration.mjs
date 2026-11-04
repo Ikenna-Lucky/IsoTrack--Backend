@@ -310,7 +310,9 @@ test("real Prometheus scrapes SQL-backed review metrics and Alertmanager deliver
   );
   await writeFile(
     join(folder, "prometheus.yml"),
-    `global:\n  scrape_interval: 1s\n  evaluation_interval: 1s\nrule_files: [/config/alerts.yml]\nalerting:\n  alertmanagers:\n    - static_configs:\n        - targets: [alertmanager:9093]\nscrape_configs:\n  - job_name: isotrack\n    metrics_path: /metrics\n    authorization:\n      type: Bearer\n      credentials: ${token}\n    static_configs:\n      - targets: [host.docker.internal:${port}]\n`,
+    // Match the production scrape cadence. A 1s scrape also imposed a 1s
+    // deadline on the Docker/psql adapter during parallel integration work.
+    `global:\n  scrape_interval: 15s\n  scrape_timeout: 10s\n  evaluation_interval: 1s\nrule_files: [/config/alerts.yml]\nalerting:\n  alertmanagers:\n    - static_configs:\n        - targets: [alertmanager:9093]\nscrape_configs:\n  - job_name: isotrack\n    metrics_path: /metrics\n    authorization:\n      type: Bearer\n      credentials: ${token}\n    static_configs:\n      - targets: [host.docker.internal:${port}]\n`,
   );
   const prom = `isotrack-monitor-prom-${id}`;
   containers.push(prom);
@@ -324,22 +326,52 @@ test("real Prometheus scrapes SQL-backed review metrics and Alertmanager deliver
     network,
     "--add-host",
     "host.docker.internal:host-gateway",
+    "-p",
+    "127.0.0.1::9090",
     "--mount",
     `type=bind,source=${folder},target=/config,readonly`,
     "quay.io/prometheus/prometheus:v3.13.5",
     "--config.file=/config/prometheus.yml",
   );
-  await until(
-    () =>
-      received.find(
-        (event) =>
-          event.status === "firing" &&
-          event.alerts.some(
-            (a) => a.labels.alertname === "IsoTrackPaymentReview",
-          ),
-      ),
-    120000,
-  );
+  try {
+    await until(
+      () =>
+        received.find(
+          (event) =>
+            event.status === "firing" &&
+            event.alerts.some(
+              (a) => a.labels.alertname === "IsoTrackPaymentReview",
+            ),
+        ),
+      120000,
+    );
+  } catch (error) {
+    const promPort = Number(
+      (await docker("port", prom, "9090/tcp")).stdout.trim().split(":").at(-1),
+    );
+    const response = await fetch(
+      `http://127.0.0.1:${promPort}/api/v1/targets`,
+      { signal: AbortSignal.timeout(3000) },
+    );
+    const targets = await response.json();
+    await writeFile(
+      join(root, "reports/monitoring-alert-diagnostic.json"),
+      JSON.stringify(
+        {
+          scope: "local fixture alert deadline",
+          received: received.length,
+          targets: targets.data?.activeTargets?.map((t) => ({
+            health: t.health,
+            lastError: t.lastError,
+            lastScrapeDuration: t.lastScrapeDuration,
+          })),
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    throw error;
+  }
   assert.ok(!JSON.stringify(received).includes(token));
   assert.ok(!JSON.stringify(received).includes("MONITOR-ALERT"));
   const silence = await fetch(`http://127.0.0.1:${amPort}/api/v2/silences`, {

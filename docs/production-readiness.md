@@ -8,11 +8,11 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8/10** after payment lifecycle, duplicate collection controls and local observability/recovery
+Current completion estimate: **8/10** after payment lifecycle, duplicate collection controls and shipment command safety, local observability/recovery
 (2026-11-04). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
-critical journeys, identity/browser adoption, remaining write idempotency/versioning, provider sandbox/payment policy,
+critical journeys, identity/browser adoption, remaining write controls, provider sandbox/payment policy,
 deployed observability, load testing and hosted recovery evidence remain substantial work.
 
 ## Release blockers and work order
@@ -22,16 +22,16 @@ deployed observability, load testing and hosted recovery evidence remain substan
 | Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports          | Lint/types/build, report validation, PostgreSQL/Redis/BullMQ/Socket.IO/local SMTP suites pass locally; earlier clean Windows install recorded; GitHub/Linux verification and repository merge rules outstanding                                                                          |
 | Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | Query projection implemented; integration unverified                                                                                                                                                                                                                                     |
 | Private fleets         | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests           | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding                                                                                          |
-| Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; HTTP, write-race and fleet isolation verification outstanding                                                                                                                                                 |
+| Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; Command HTTP, write-race and fleet denial verified; full detail-route/hosted verification outstanding                                                                                                                                                 |
 | Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, guarded login/signup/recovery HTTP, atomic signup and credential races verified locally; full app/browser journeys, verified-email policy, hosting ingress, provider and deployed evidence outstanding                       |
-| Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/transitions/history are atomic; creation idempotency, rollback/replay and assignment races verified locally; remaining command idempotency/versioning, proof and returns outstanding                                                                                            |
+| Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/update/history/outbox/saved results are atomic; creation and command replay, workflow versions, races, stale cycles and lost acknowledgements verified locally; delivery proof, returns, client/hosted adoption and capacity outstanding                                                                                            |
 | Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Shipment checkout guards, reconciliation, single applied receipts, additional-money review and verified full-refund resolution pass local SQL/HTTP/fault tests; actual Stripe sandbox, partial/applied refunds, disputes, abuse budgets and deployed operations outstanding |
 | Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding            |
 | Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
-| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0010 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
+| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0011 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
 | Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Unverified                                                                                                                                                                                                                                                                               |
 | Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Planned                                                                                                                                                                                                                                                                                  |
-| Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 58 fast, 143 existing integration and six monitoring cases verified across full/recheck runs; last full report retains two image-download failures; deployed receivers/log retention, local three-case PostgreSQL recovery verified; host monitoring and hosted restore/incident rehearsal outstanding |
+| Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 58 fast and full/focused integration evidence retained; latest full run 159/160 with one alert fixture timeout, final shipment/monitoring recheck 15/15; deployed receivers/log retention, local three-case PostgreSQL recovery verified; host monitoring and hosted restore/incident rehearsal outstanding |
 | Data lifecycle         | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules             | Planned                                                                                                                                                                                                                                                                                  |
 
 ## Evidence policy
@@ -770,3 +770,58 @@ Production backup scheduling, encrypted independent retention, hosting support,
 agreed RPO/RTO, realistic restore volume, revoked-session/token handling, external
 payment/email reconciliation and a full deployed cutover remain unverified.
 Completion remains **8/10**; local recovery evidence does not clear those gates.
+
+## Shipment command retry and concurrency safety — 2026-11-04
+
+PR-07/09/10 acceptance: assignment, status changes and cancellation require a key
+and expected workflow version; identical retries return their committed snapshot;
+competing keys cannot both change one version; status cycles do not revive stale
+requests. Shipment/version/history/outbox/saved-result writes are atomic, including
+rollback and lost-acknowledgement recovery. Current identity/fleet access must be
+checked before writing or replaying. Invalid input/denied commands do not create
+new durable requests. Expired committed keys remain non-reusable tombstones.
+
+Migration 0011 adds a nonnegative integer workflow version and database trigger,
+extends the request operation constraint and installs the atomic command function.
+The shared HTTP command router replaces all three unversioned public update
+handlers. Keys are user/operation-scoped and body fingerprints include shipment,
+action, version and normalized inputs. Each lock wait is limited to two seconds;
+no external work or committed processing lease occurs inside the transaction.
+Readiness requires the new column. See docs/shipment-commands.md for the API
+contract, different contention behavior from creation, bounds and rollout.
+
+Eight new integration cases passed through real loopback HTTP, signed JWT/session
+checks and PostgreSQL 17, using the production migration runner and SQL. The first
+run caught PL/pgSQL CASE syntax during migration; it was fixed, and its failing
+report remains in reports/shipment-commands-initial.xml. The focused rerun passed
+all eight in 41.216 seconds without skips. Final authorization rechecks after
+lock waits and the readiness schema check were included in the full regression.
+That run finished 2026-11-04T08:55:27.460Z in 592.415 seconds with 159/160 passing:
+all shipment, migration, account, payment, outbox, recovery and tracking cases
+passed. One existing live alert-delivery fixture exceeded its 120-second deadline.
+The unsuccessful reports/integration.xml and .json remain intact, not marked green.
+
+The alert fixture had a one-second scrape/deadline despite its Docker/psql
+transport. It now uses the production 15-second cadence with a ten-second scrape
+deadline, retaining the actual one-minute alert hold, local delivery and silence
+assertions. Timeout diagnostics now retain target health/error/duration. This
+addresses a plausible contention-sensitive fixture cause; the failed run had no
+target diagnostic proving its exact cause. No production alert rule was relaxed.
+
+The final parallel focused recheck passed all 15 cases (nine shipment, six
+observability) in 95.679 seconds, with zero failures, skips, cancellations or todos.
+The added shipment case completes the actual delivery progression, checks pickup/
+delivery timestamps and rejects terminal/skipped/unavailable-driver commands
+without new reservations. The monitoring delivery case took 75.853 seconds.
+Validated reports/shipment-safety-final.xml and .json retain this evidence. This
+is a full-run plus focused recheck, not a single green 161-case integration run.
+Local commit=null; remote GitHub Actions remains unverified.
+
+All 58 fast cases, lint, types and build (936 modules, 3.53 MB) passed for this build.
+The generated schema snapshot is included; no historical migration was edited.
+
+Production Neon/Bun/ingress, frontend contract adoption, deployment-scale locks,
+key/traffic budgets, workload/capacity and delivery proof/returns remain separate
+gates. Stop old write-serving instances during coordinated rollout; retaining
+old handlers bypasses the client-version/key contract. No frontend edit, live
+migration or deployment was performed. Completion remains **8/10**.

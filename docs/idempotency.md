@@ -4,6 +4,11 @@ Both `POST /api/v1/shipments` and `POST /api/v1/payments/initialize` now require
 `Idempotency-Key`. This is a backend API contract change; frontend adoption is not
 part of this build. Missing or malformed keys return 400 before reserving work.
 
+Shipment assignment, status updates and cancellation also require keys and an
+expected shipment version. They use a single database transaction rather than
+the creation/checkout lease protocol. See [shipment commands](shipment-commands.md)
+for their body, conflict, replay and coordinated rollout contract.
+
 ## Client contract
 
 Generate a random UUID once for each intended action and retain it with that

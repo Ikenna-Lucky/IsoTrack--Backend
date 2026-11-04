@@ -116,3 +116,10 @@ rejects corruption and a populated target. Run `npm run recovery:drill` for focu
 JUnit/JSON and timing evidence; these cases also run in the normal integration
 suite. No application environment or external service is used. See docs/recovery.md
 for scope, local time budget and remaining deployment recovery requirements.
+
+The shipment-command suite uses `isotrack-shipment-command-test-*` PostgreSQL and
+an ephemeral loopback HTTP server. It applies the complete production migration
+chain and checks signed authentication, fleet access, workflow versions, command
+replay, competing requests, lost commit acknowledgements and transactional outbox
+rollback. It is discovered by the standard integration runner; no external
+provider, application environment or frontend is used. See docs/shipment-commands.md.
