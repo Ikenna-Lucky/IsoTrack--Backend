@@ -77,6 +77,30 @@ export const shipments = pgTable(
     index("shipments_customer_id_idx").on(t.customerId),
     index("shipments_status_idx").on(t.status),
     index("shipments_created_at_idx").on(t.createdAt),
+    index("shipments_business_page_idx").on(
+      t.businessId,
+      t.createdAt.desc(),
+      sql`${t.id} collate "C" desc`,
+    ),
+    index("shipments_customer_page_idx").on(
+      t.customerId,
+      t.createdAt.desc(),
+      sql`${t.id} collate "C" desc`,
+    ),
+    index("shipments_driver_page_idx").on(
+      t.driverId,
+      t.businessId,
+      t.createdAt.desc(),
+      sql`${t.id} collate "C" desc`,
+    ),
+    index("shipments_driver_active_page_idx")
+      .on(
+        t.driverId,
+        t.businessId,
+        t.createdAt.desc(),
+        sql`${t.id} collate "C" desc`,
+      )
+      .where(sql`${t.status} not in ('delivered','failed','cancelled')`),
   ],
 );
 

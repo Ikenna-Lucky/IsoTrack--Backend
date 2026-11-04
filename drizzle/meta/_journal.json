@@ -85,6 +85,13 @@
       "when": 1793664000007,
       "tag": "0011_shipment_commands",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793664000008,
+      "tag": "0012_shipment_pagination",
+      "breakpoints": true
     }
   ]
 }

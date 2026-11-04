@@ -123,3 +123,11 @@ chain and checks signed authentication, fleet access, workflow versions, command
 replay, competing requests, lost commit acknowledgements and transactional outbox
 rollback. It is discovered by the standard integration runner; no external
 provider, application environment or frontend is used. See docs/shipment-commands.md.
+
+The shipment-page suite creates `isotrack-shipment-page-test-*` PostgreSQL and an
+ephemeral loopback HTTP server. It applies the migration journal and exercises
+all-role traversal, privacy, scope/filter validation, live-list changes and exact
+timestamp boundaries. A 10,000-row tied-timestamp batch checks deep seek plans;
+actual EXPLAIN ANALYZE JSON is retained in reports/shipment-page-plan-*.json.
+The standard unit/integration discovery includes these cases. See
+docs/shipment-pagination.md for contract and workload limits.

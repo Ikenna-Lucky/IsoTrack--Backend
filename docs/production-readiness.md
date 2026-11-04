@@ -8,7 +8,7 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8/10** after payment lifecycle, duplicate collection controls and shipment command safety, local observability/recovery
+Current completion estimate: **8/10** after bounded shipment lists, shipment command safety and local observability/recovery
 (2026-11-04). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
@@ -20,7 +20,7 @@ deployed observability, load testing and hosted recovery evidence remain substan
 | Workstream             | Acceptance criteria                                                                                                 | Current status                                                                                                                                                                                                                                                                           |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports          | Lint/types/build, report validation, PostgreSQL/Redis/BullMQ/Socket.IO/local SMTP suites pass locally; earlier clean Windows install recorded; GitHub/Linux verification and repository merge rules outstanding                                                                          |
-| Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | Query projection implemented; integration unverified                                                                                                                                                                                                                                     |
+| Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | List contact/driver projection verified through HTTP/PostgreSQL; detail and analytics boundaries still require dedicated integration evidence                                                                                                                                                                                                                                     |
 | Private fleets         | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests           | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding                                                                                          |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; Command HTTP, write-race and fleet denial verified; full detail-route/hosted verification outstanding                                                                                                                                                 |
 | Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, guarded login/signup/recovery HTTP, atomic signup and credential races verified locally; full app/browser journeys, verified-email policy, hosting ingress, provider and deployed evidence outstanding                       |
@@ -28,8 +28,8 @@ deployed observability, load testing and hosted recovery evidence remain substan
 | Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Shipment checkout guards, reconciliation, single applied receipts, additional-money review and verified full-refund resolution pass local SQL/HTTP/fault tests; actual Stripe sandbox, partial/applied refunds, disputes, abuse budgets and deployed operations outstanding |
 | Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding            |
 | Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
-| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0011 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
-| Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Unverified                                                                                                                                                                                                                                                                               |
+| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0012 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
+| Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Bounded shipment cursor lists and 10,000-row tied-timestamp seek plans verified locally; varied data, concurrency and capacity/overload remain unverified                                                                                                                                                                                                                                                                               |
 | Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Planned                                                                                                                                                                                                                                                                                  |
 | Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 58 fast and full/focused integration evidence retained; latest full run 159/160 with one alert fixture timeout, final shipment/monitoring recheck 15/15; deployed receivers/log retention, local three-case PostgreSQL recovery verified; host monitoring and hosted restore/incident rehearsal outstanding |
 | Data lifecycle         | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules             | Planned                                                                                                                                                                                                                                                                                  |
@@ -825,3 +825,47 @@ key/traffic budgets, workload/capacity and delivery proof/returns remain separat
 gates. Stop old write-serving instances during coordinated rollout; retaining
 old handlers bypasses the client-version/key contract. No frontend edit, live
 migration or deployment was performed. Completion remains **8/10**.
+
+## Bounded shipment lists — 2026-11-04
+
+PR-07/09/13 acceptance: every authenticated role uses bounded, stable cursor pages;
+strict limits/filters/cursors cannot widen access; database timestamp precision
+and ID ordering survive traversal; routine mutable updates/newer inserts do not
+duplicate earlier rows; a deleted boundary remains usable. Related contacts are
+allowlisted and event histories bounded. Deep queries must seek through indexes
+without OFFSET/full-count work. No million-user capacity conclusion follows.
+
+Implemented one shared list router/SQL path replacing unbounded driver/customer
+lists and business offset/count pagination. Default/max limits are 20/50. Cursors
+retain UTC microseconds and use the creation-time/ID C-collation order, bound to
+account/role/filter consistency. SQL independently rechecks current identity and
+fleet/ownership/customer scope. Lookahead and relations cover at most limit+1
+rows; event histories are limited per role. Driver profiles no longer leak
+insurance/preferences/private fields. Migration 0012 adds five matching scope/
+order indexes and a generated snapshot; historical SQL remains unchanged.
+
+Verification: all 60 fast cases passed (two new), plus all 27 focused integration
+cases (seven pagination, eight migration, three recovery, nine commands), without
+skips/failures/todos/cancellations. The focused run took 106.839 seconds on local
+Windows/Node 24.12.0/PostgreSQL 17. Validated JUnit/JSON evidence is in
+reports/shipment-pagination-final.*; local commit=null. Lint, types and Bun build
+(939 modules, 3.54 MB) passed. The complete backend suite and remote CI were not
+rerun for this read-path/additive-index build; those earlier reports remain as
+historical evidence, not a pass for the full current artifact.
+
+The first integration run passed six cases and failed a plan assertion requiring
+one specific index on a mostly unique-timestamp dataset. PostgreSQL chose an
+existing creation-time index plus a small incremental sort; this was an overly
+prescriptive expectation, not a demonstrated sequential-scan defect. The retained
+reports/shipment-pagination-initial.xml records that failure. A dedicated
+10,000-row batch-import/tied-timestamp dataset now exercises deep ID seeking;
+the plan test passed all four scopes/filters with the new composite indexes,
+no shipment sequential scan and at most 21 shipment rows examined for a 20-row
+page. EXPLAIN ANALYZE JSON is retained in reports/shipment-page-plan-*.json. This
+is one workload shape, not a substitute for varied data/load measurements.
+
+See docs/shipment-pagination.md for removed numbered pages/totals, default driver
+filter, creation-time ordering, live-list behavior, reduced driver relations and
+frontend adoption. No frontend, live migration, new secret or deployment changed.
+Hosted Neon/Bun/ingress, production index lock/build costs, detail-history bounds,
+other list endpoints and capacity/overload remain gates. Completion stays **8/10**.

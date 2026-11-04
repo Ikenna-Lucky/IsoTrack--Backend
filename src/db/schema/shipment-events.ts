@@ -1,5 +1,5 @@
 import { pgTable, text, timestamp, jsonb, index } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { shipmentStatusEnum } from "./enums";
 import { shipments } from "./shipments";
 
@@ -20,6 +20,11 @@ export const shipmentEvents = pgTable(
   (t) => [
     index("shipment_events_shipment_id_idx").on(t.shipmentId),
     index("shipment_events_created_at_idx").on(t.createdAt),
+    index("shipment_events_page_idx").on(
+      t.shipmentId,
+      t.createdAt.desc(),
+      sql`${t.id} collate "C" desc`,
+    ),
   ],
 );
 
