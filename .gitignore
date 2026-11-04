@@ -31,3 +31,4 @@ Thumbs.db
 
 # Logs
 *.log
+monitoring/metrics-token.txt

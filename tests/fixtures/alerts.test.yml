@@ -1,0 +1,30 @@
+rule_files: [alerts.yml]
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'isotrack_backlog_present{queue="payment_reviews"}'
+        values: "1 1 0 0"
+      - series: 'isotrack_payment_reconciliation_total{outcome="error"}'
+        values: "0+1x20"
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: IsoTrackPaymentReview
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: IsoTrackPaymentReview
+        exp_alerts:
+          - exp_labels: { queue: payment_reviews, severity: warning }
+            exp_annotations: { summary: "A received payment needs review" }
+      - eval_time: 3m
+        alertname: IsoTrackPaymentReview
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: IsoTrackPaymentReconciliationFailures
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: IsoTrackPaymentReconciliationFailures
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              { summary: "Payment reconciliation is repeatedly failing" }

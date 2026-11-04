@@ -23,6 +23,12 @@ import {
   trustedProxyAddresses,
 } from "../src/lib/request-peer.ts";
 import { authPairKey, authPeerKey } from "../src/lib/auth-budget.ts";
+import {
+  createTelemetry,
+  requestTelemetry,
+  createEventLogger,
+} from "../src/observability/telemetry.ts";
+const requestRecords = [];
 
 const postgres = postgresFixture({ prefix: "auth" });
 const secret = "public-auth-production-fixture-key-32";
@@ -124,6 +130,13 @@ before(async () => {
   passwordHash = await hash("OriginalPassword1", 12);
   for (const proxies of ["", "", "127.0.0.1"]) {
     const app = new Hono();
+    app.use(
+      "*",
+      requestTelemetry(
+        createTelemetry(),
+        createEventLogger((line) => requestRecords.push(JSON.parse(line))),
+      ),
+    );
     app.route(
       "/auth",
       createPublicAuthRouter({
@@ -168,6 +181,7 @@ beforeEach(async () => {
   storageFailure = false;
   beforeSession = async () => {};
   events.length = 0;
+  requestRecords.length = 0;
   await raw(
     "truncate users,auth_sessions,account_actions,account_action_limits cascade",
   );
@@ -178,6 +192,12 @@ beforeEach(async () => {
 test("login verifies bcrypt, opens a durable signed session and returns only public user fields", async () => {
   const response = await login(bases[0], " MEMBER@example.test ");
   assert.equal(response.status, 200);
+  assert.equal(events.at(-1).requestId, response.headers.get("X-Request-Id"));
+  assert.equal(
+    requestRecords.at(-1).requestId,
+    response.headers.get("X-Request-Id"),
+  );
+  assert.equal(requestRecords.at(-1).route, "/auth/login");
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.match(response.headers.get("set-cookie"), /HttpOnly/);
   assert.match(response.headers.get("set-cookie"), /Secure/);

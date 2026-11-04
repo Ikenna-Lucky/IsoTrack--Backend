@@ -5,6 +5,8 @@ import { registerAccountStatement } from "@/db/queries/register-account";
 import { requestPeer } from "@/middleware/request-peer";
 import { writeStore } from "@/services/write-store";
 import { Hono } from "hono";
+import { logEvent } from "../observability/telemetry";
+import { reportDependency } from "../observability/runtime";
 import { zValidator } from "@hono/zod-validator";
 import { deleteCookie } from "hono/cookie";
 import { z } from "zod";
@@ -47,8 +49,7 @@ authRouter.route(
     store: writeStore,
     key: env.ACCOUNT_ACTION_SECRET,
     peer: requestPeer,
-    reportError: () =>
-      console.error(JSON.stringify({ event: "account_action_failure" })),
+    reportError: () => reportDependency("account_action"),
   }),
 );
 
@@ -68,7 +69,12 @@ authRouter.route(
     },
     openSession,
     secureCookies: env.NODE_ENV === "production",
-    record: (event) => console.info(JSON.stringify(event)),
+    record: (event) =>
+      logEvent("authentication_attempt", {
+        operation: event.operation,
+        outcome: event.outcome,
+        requestId: event.requestId,
+      }),
   }),
 );
 // ─── POST /auth/refresh ───────────────────────────────────────────────────────

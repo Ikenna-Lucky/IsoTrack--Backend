@@ -32,6 +32,13 @@ const envSchema = z
       }, "Use comma-separated exact proxy IP addresses, without CIDRs or wildcards"),
 
     DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+    METRICS_TOKEN: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .regex(/^[A-Za-z0-9_-]{32,128}$/)
+        .optional(),
+    ),
 
     JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
     JWT_EXPIRES_IN: tokenLifetime.default("15m"),

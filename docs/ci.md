@@ -11,11 +11,19 @@ bun run test:unit
 bun run test:integration
 ```
 
-The integration suites need Docker. They create disposable PostgreSQL/Redis
-containers, loopback Socket.IO/SMTP servers and synthetic records without loading
-application credentials, making Stripe payments or sending external email. See
-`tests/README.md` for scope and container cleanup details. The runner has a seven-
-minute integration timeout; the CI job allows fifteen minutes including setup.
+The integration suites need Docker. They create disposable PostgreSQL/Redis,
+Prometheus/Alertmanager containers, local HTTP/Socket.IO/SMTP servers and synthetic
+records without loading application credentials, making Stripe payments or sending
+external messages. The alert drill uses a local fixture receiver only. Images may
+need network access on a cold machine. See `tests/README.md` for scope and cleanup.
+The runner has a fifteen-minute integration timeout with two test files in
+parallel; the CI job allows twenty minutes including setup.
+
+CI pulls all four service images in an explicit preparation step before the test
+phase. Integration tests run only when preparation succeeded; a download failure
+still fails the job. For a cold local machine, pull the same images listed in the
+workflow before starting the suite so registry latency does not consume fixture
+startup deadlines. No test assertion is automatically retried or skipped.
 
 ## Lint and build
 

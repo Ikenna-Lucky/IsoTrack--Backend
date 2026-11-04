@@ -1,13 +1,18 @@
 import { Hono } from "hono";
 import { apiCors } from "@/lib/api-cors";
-import { logger } from "hono/logger";
 import { prettyJSON } from "hono/pretty-json";
 import { secureHeaders } from "hono/secure-headers";
 import { serve } from "@hono/node-server";
 import { Server } from "socket.io";
 import type { ServerType } from "@hono/node-server";
 
-import { HTTPException } from "hono/http-exception";
+import {
+  requestTelemetry,
+  safeErrorHandler,
+  telemetry,
+  logEvent,
+} from "./observability/telemetry";
+import { createOperationalRuntime } from "./observability/runtime";
 import { authRouter } from "@/routes/auth";
 import { driverInvitationsRouter } from "@/routes/driver-invitations";
 import { shipmentsRouter } from "@/routes/shipments";
@@ -27,20 +32,13 @@ import { env } from "@/lib/env";
 const app = new Hono();
 
 // Global middleware
-app.use("*", logger());
+app.use("*", requestTelemetry(telemetry, logEvent));
 app.use("*", prettyJSON());
 app.use("*", secureHeaders());
 app.use("*", apiCors(env.FRONTEND_URL));
 
-// Health check
-app.get("/health", (c) => {
-  return c.json({
-    status: "ok",
-    service: "isotrack-api",
-    version: "0.1.0",
-    timestamp: new Date().toISOString(),
-  });
-});
+const operations = createOperationalRuntime();
+app.route("/", operations.router);
 
 // ─── API routes (v1) ─────────────────────────────────────────────────────────
 const v1 = new Hono();
@@ -62,53 +60,14 @@ app.notFound((c) => {
     {
       success: false,
       error: "NOT_FOUND",
-      message: `Route ${c.req.method} ${c.req.path} not found`,
+      message: "Route not found",
     },
     404,
   );
 });
 
 // ─── Global error handler ─────────────────────────────────────────────────────
-app.onError((err, c) => {
-  // Let Hono's HTTPException pass through with its correct status code.
-  // Without this, thrown HTTPException(401) would get swallowed into a 500,
-  // and the frontend's axios refresh interceptor would never trigger.
-  if (err instanceof HTTPException) {
-    return err.getResponse();
-  }
-
-  console.error(`[Error] ${c.req.method} ${c.req.path}:`, err);
-
-  // Never expose raw database or internal error details to the client.
-  // Map known low-level error types to friendly messages; fall back to generic.
-  const name = (err as { name?: string }).name ?? "";
-  const code = (err as { code?: string }).code ?? "";
-
-  // NeonDbError / postgres driver errors
-  const isDbError =
-    name === "NeonDbError" ||
-    name === "DatabaseError" ||
-    code === "42703" || // undefined_column
-    code === "42P01" || // undefined_table
-    code === "23505" || // unique_violation
-    code === "23503" || // foreign_key_violation
-    code === "08006" || // connection_failure
-    name.toLowerCase().includes("neon") ||
-    err.message?.toLowerCase().includes("neon internal");
-
-  const clientMessage = isDbError
-    ? "A database error occurred. Please try again later."
-    : "Something went wrong. Please try again.";
-
-  return c.json(
-    {
-      success: false,
-      error: "INTERNAL_SERVER_ERROR",
-      message: clientMessage,
-    },
-    500,
-  );
-});
+app.onError(safeErrorHandler(logEvent));
 
 // ─── HTTP server (via @hono/node-server) + Socket.io ─────────────────────────
 // @hono/node-server creates a proper Node.js http.Server under the hood,
@@ -128,6 +87,7 @@ let shuttingDown = false;
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  operations.drain();
   const deadline = setTimeout(() => process.exit(1), 30_000);
   deadline.unref();
   const drain = async () => {
@@ -137,27 +97,17 @@ function shutdown() {
       paymentRuntime.close(),
     ]);
     clearTimeout(deadline);
+    operations.close();
   };
   void drain().catch(() => {
-    console.error(JSON.stringify({ event: "shutdown_failed" }));
+    logEvent("shutdown_failed");
     process.exitCode = 1;
   });
 }
 process.once("SIGTERM", shutdown);
 process.once("SIGINT", shutdown);
 
-console.log(`
-╔══════════════════════════════════════════╗
-║         IsoTrack API Server              ║
-╠══════════════════════════════════════════╣
-║  Status   : Running                      ║
-║  Port     : ${String(env.PORT).padEnd(28)}║
-║  Env      : ${String(env.NODE_ENV).padEnd(28)}║
-║  API Base : /api/v1                      ║
-║  WS       : Socket.io attached           ║
-║  Worker   : Notification queue active    ║
-╚══════════════════════════════════════════╝
-`);
+logEvent("service_started");
 
 export type AppType = typeof app;
 export { io };

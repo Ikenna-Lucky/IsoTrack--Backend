@@ -7,11 +7,13 @@ required checks, artifact details and current evidence.
 
 Run `npm run test:unit` with Node 24.12.0 or the CI-pinned version.
 
-Run `npm run test:integration` with Docker running. The integration suite pulls
-`postgres:17-alpine`, creates a uniquely named temporary container, and stops it
-after the run. It publishes no host ports, uses synthetic data, and never reads
-the application `.env` or connects to the application database. The test password
-is deliberately non-secret and confined to that disposable container.
+Run `npm run test:integration` with Docker running. Database fixtures pull
+`postgres:17-alpine`, create uniquely named temporary containers, and stop them
+after the run. Those PostgreSQL containers publish no host ports; Redis and
+HTTP/SMTP/socket/monitoring fixtures use ephemeral local ports as described below.
+Fixtures use synthetic data and never read the application `.env` or connect to
+the application database. Test passwords are deliberately non-secret and confined
+to disposable services.
 
 The ownership suite executes the production SQL authorization predicate against
 PostgreSQL. It checks permitted reads, foreign reads, null assignments, rejected
@@ -93,3 +95,15 @@ database. A third server tests explicitly trusted proxy handling. It exercises
 real bcrypt, SQL budgets, signup/profile atomicity, concurrent HTTP requests and
 signed fixture sessions. No production credentials or hosted database are used.
 See docs/auth-abuse-protection.md for policy, boundaries and rollout requirements.
+
+The observability suite additionally uses `isotrack-monitor-*` disposable
+PostgreSQL/Redis/Prometheus/Alertmanager resources. It exposes ephemeral local test
+ports and a local-only synthetic alert receiver; the receiver listens on host
+interfaces so containers can reach it through Docker's host gateway. No real
+recipient or application credential is used. It checks schema/outage readiness,
+private scrapes, indexed durable backlog values, production rule evaluation and
+actual alert delivery/acknowledgement. The alert hold deliberately takes about a
+minute. Temporary configurations, Docker network and containers are cleaned up.
+The runner limits file concurrency to two and the full suite to fifteen minutes.
+Cold image downloads need a working Docker registry connection. See
+docs/observability.md for exact metric and deployed-verification limits.

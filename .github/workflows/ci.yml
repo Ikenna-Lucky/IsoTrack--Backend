@@ -37,9 +37,17 @@ jobs:
       - name: Unit and HTTP handler tests
         id: unit
         run: bun run test:unit
+      - name: Prepare integration service images
+        id: integration_services
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          docker pull postgres:17-alpine
+          docker pull redis:7-alpine
+          docker pull quay.io/prometheus/prometheus:v3.13.5
+          docker pull quay.io/prometheus/alertmanager:v0.34.2
       - name: Database, queue and real-time integration tests
         id: integration
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.integration_services.outcome == 'success' }}
         run: bun run test:integration
       - name: Retain test results
         if: ${{ always() && steps.unit.outcome != 'skipped' }}

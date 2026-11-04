@@ -2,6 +2,8 @@ import { stripe, stripeContext } from "../lib/stripe";
 import { env } from "../lib/env";
 import { writeStore } from "./write-store";
 import { createPaymentLifecycle } from "./payment-lifecycle";
+import { telemetry } from "../observability/telemetry";
+import { reportDependency } from "../observability/runtime";
 
 export const paymentLifecycle = stripe
   ? createPaymentLifecycle({
@@ -19,19 +21,14 @@ export function startPaymentReconciliation() {
     running = paymentLifecycle
       .sweep()
       .then((result) => {
-        if (result.failed)
-          console.error(
-            JSON.stringify({
-              event: "payment_reconciliation_failed",
-              ...result,
-            }),
-          );
+        telemetry.sweep.inc(
+          { outcome: "success" },
+          result.attempted - result.failed,
+        );
+        telemetry.sweep.inc({ outcome: "error" }, result.failed);
+        if (result.failed) reportDependency("payment_reconciliation");
       })
-      .catch(() =>
-        console.error(
-          JSON.stringify({ event: "payment_reconciliation_unavailable" }),
-        ),
-      )
+      .catch(() => reportDependency("payment_reconciliation"))
       .finally(() => {
         running = null;
       });

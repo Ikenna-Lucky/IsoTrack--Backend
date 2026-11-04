@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { reportDependency } from "../observability/runtime";
 import { env } from "@/lib/env";
 import { outboxStore } from "@/db/outbox-store";
 import { renderNotificationEmail } from "@/lib/notification-email";
@@ -28,10 +29,7 @@ export function startNotificationWorker() {
         ...renderNotificationEmail(email, env.FRONTEND_URL),
       });
     },
-    (operation) =>
-      console.error(
-        JSON.stringify({ event: "notification_failure", operation }),
-      ),
+    reportDependency,
   );
   const closeAccountEmails = env.ACCOUNT_ACTION_SECRET
     ? startAccountEmailDispatcher(
@@ -43,19 +41,10 @@ export function startNotificationWorker() {
             await transporter.sendMail({ from: env.EMAIL_FROM, ...email });
           },
         ),
-        () =>
-          console.error(
-            JSON.stringify({ event: "account_email_dispatch_failure" }),
-          ),
+        () => reportDependency("account_email"),
       )
     : async () => {};
-  if (!env.ACCOUNT_ACTION_SECRET)
-    console.error(
-      JSON.stringify({
-        event: "account_actions_disabled",
-        reason: "missing_key",
-      }),
-    );
+  if (!env.ACCOUNT_ACTION_SECRET) reportDependency("account_action");
   return {
     close: async () => {
       await Promise.all([runtime.close(), closeAccountEmails()]);

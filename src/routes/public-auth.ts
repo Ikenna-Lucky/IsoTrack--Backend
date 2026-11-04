@@ -4,6 +4,7 @@ import { setCookie } from "hono/cookie";
 import { z } from "zod";
 import { compare, hash } from "bcryptjs";
 import { randomInt, randomUUID } from "node:crypto";
+import { currentRequestId } from "../observability/telemetry.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { User } from "@/db/schema";
 import type { OutboxStore } from "../workers/outbox-processor.ts";
@@ -103,7 +104,7 @@ export function createPublicAuthRouter(deps: Dependencies) {
       }),
     );
     app.post(path, async (c) => {
-      const requestId = randomUUID();
+      const requestId = currentRequestId() ?? randomUUID();
       c.header("X-Request-Id", requestId);
       const record = (outcome: AuthSecurityEvent["outcome"]) =>
         deps.record({

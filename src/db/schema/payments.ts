@@ -53,6 +53,9 @@ export const payments = pgTable(
         sql`${t.provider}='stripe' and ${t.status}='pending' and ${t.checkoutState}<>'review'`,
       ),
     index("payments_shipment_id_idx").on(t.shipmentId),
+    index("payments_unresolved_review_idx")
+      .on(t.receivedAt)
+      .where(sql`${t.reviewReason} is not null and ${t.refundId} is null`),
     index("payments_status_idx").on(t.status),
     index("payments_provider_reference_idx").on(t.reference),
   ],

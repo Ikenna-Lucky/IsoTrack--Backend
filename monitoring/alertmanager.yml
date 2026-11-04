@@ -1,0 +1,9 @@
+# Local evaluation only. Configure a real receiver and drill delivery before release.
+route:
+  receiver: unconfigured
+  group_by: [alertname, job, instance]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+receivers:
+  - name: unconfigured

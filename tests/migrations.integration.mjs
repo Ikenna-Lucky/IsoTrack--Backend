@@ -135,7 +135,7 @@ test("payment upgrade quarantines unknown attempts and preserves additional hist
     ('first','shipment','REF-FIRST',100,'success','2026-01-01'),
     ('second','shipment','REF-SECOND',100,'success','2026-01-02'),
     ('unknown','shipment','REF-UNKNOWN',100,'pending',null);`);
-  assert.equal(await runMigrations(store, folder), 1);
+  assert.equal(await runMigrations(store, folder), migrations.length - 9);
   assert.equal(
     await query("select payment_id from shipment_payment_receipts"),
     "first",

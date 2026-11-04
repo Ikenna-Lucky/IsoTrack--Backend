@@ -35,6 +35,9 @@ export const accountActions = pgTable(
   },
   (t) => [
     index("account_actions_user_idx").on(t.userId),
+    index("account_actions_dead_idx")
+      .on(t.availableAt)
+      .where(sql`${t.deliveryState}='dead'`),
     index("account_actions_due_idx")
       .on(t.availableAt)
       .where(sql`${t.deliveryState}='pending'`),

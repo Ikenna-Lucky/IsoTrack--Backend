@@ -1,0 +1,68 @@
+groups:
+  - name: isotrack
+    rules:
+      - alert: IsoTrackScrapeDown
+        expr: up{job="isotrack"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "API metrics cannot be scraped" }
+      - alert: IsoTrackDatabaseDown
+        expr: isotrack_dependency_ready{dependency="database"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: "Database readiness is failing" }
+      - alert: IsoTrackRedisDegraded
+        expr: isotrack_dependency_ready{dependency="redis"} == 0
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          {
+            summary: "Redis is unavailable; durable notifications may be delayed",
+          }
+      - alert: IsoTrackBacklogSnapshotStale
+        expr: time() - isotrack_backlog_snapshot_timestamp_seconds > 120
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          {
+            summary: "Durable backlog metrics are stale or have never succeeded",
+          }
+      - alert: IsoTrackBackgroundWorkStuck
+        expr: isotrack_backlog_oldest_seconds{queue=~"notifications|account_emails|payments"} > 600
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          { summary: "Durable work is overdue by more than ten minutes" }
+      - alert: IsoTrackExpiredWorkerLease
+        expr: isotrack_backlog_oldest_seconds{queue=~"notification_leases|account_email_leases"} > 120
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          { summary: "Expired notification leases are not being reclaimed" }
+      - alert: IsoTrackDeadLetters
+        expr: isotrack_backlog_present{queue=~"notification_dead|account_email_dead"} == 1
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          { summary: "Notification delivery requires operator review" }
+      - alert: IsoTrackPaymentReview
+        expr: isotrack_backlog_present{queue="payment_reviews"} == 1
+        for: 1m
+        labels: { severity: warning }
+        annotations: { summary: "A received payment needs review" }
+      - alert: IsoTrackPaymentReconciliationFailures
+        expr: sum(increase(isotrack_payment_reconciliation_total{outcome="error"}[15m])) >= 3
+        for: 2m
+        labels: { severity: warning }
+        annotations: { summary: "Payment reconciliation is repeatedly failing" }
+      - alert: IsoTrackApiErrors
+        expr: sum(rate(isotrack_http_request_duration_seconds_count{route=~"/api/v1/.*",status=~"5.."}[5m])) / clamp_min(sum(rate(isotrack_http_request_duration_seconds_count{route=~"/api/v1/.*"}[5m])),0.001) > 0.05 and sum(increase(isotrack_http_request_duration_seconds_count{route=~"/api/v1/.*"}[5m])) >= 20
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: "API error rate exceeds five percent" }
+      - alert: IsoTrackApiLatency
+        expr: histogram_quantile(0.95,sum by(le)(rate(isotrack_http_request_duration_seconds_bucket{route=~"/api/v1/.*"}[5m]))) > 2 and sum(increase(isotrack_http_request_duration_seconds_count{route=~"/api/v1/.*"}[5m])) >= 20
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          { summary: "API p95 response preparation exceeds two seconds" }

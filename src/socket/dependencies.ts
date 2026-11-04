@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { reportDependency } from "../observability/runtime";
 import { verifyAccessToken } from "@/lib/jwt";
 import {
   socketAccessStatement,
@@ -31,9 +32,5 @@ export const trackingDependencies: TrackingDependencies = {
   recordLocation: async (identity, location) =>
     (await execute(recordSocketLocationStatement(identity, location))).rows
       .length === 1,
-  reportError: (operation) => {
-    console.error(
-      JSON.stringify({ event: "tracking_dependency_failure", operation }),
-    );
-  },
+  reportError: () => reportDependency("tracking"),
 };

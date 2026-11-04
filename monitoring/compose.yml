@@ -1,0 +1,33 @@
+services:
+  prometheus:
+    image: quay.io/prometheus/prometheus:v3.13.5
+    ports: ["127.0.0.1:9090:9090"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    secrets: [metrics_token]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    command:
+      [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--storage.tsdb.retention.time=7d",
+        "--storage.tsdb.retention.size=512MB",
+      ]
+  alertmanager:
+    image: quay.io/prometheus/alertmanager:v0.34.2
+    ports: ["127.0.0.1:9093:9093"]
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    command:
+      [
+        "--config.file=/etc/alertmanager/alertmanager.yml",
+        "--storage.path=/alertmanager",
+      ]
+secrets:
+  metrics_token:
+    file: ./metrics-token.txt
+volumes:
+  prometheus-data:
+  alertmanager-data:

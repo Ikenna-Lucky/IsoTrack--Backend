@@ -8,12 +8,12 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8/10** after payment lifecycle and duplicate collection controls
+Current completion estimate: **8/10** after payment lifecycle, duplicate collection controls and local observability
 (2026-11-04). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
 critical journeys, identity/browser adoption, remaining write idempotency/versioning, provider sandbox/payment policy,
-observability, load testing and recovery evidence remain substantial work.
+deployed observability, load testing and recovery evidence remain substantial work.
 
 ## Release blockers and work order
 
@@ -28,10 +28,10 @@ observability, load testing and recovery evidence remain substantial work.
 | Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Shipment checkout guards, reconciliation, single applied receipts, additional-money review and verified full-refund resolution pass local SQL/HTTP/fault tests; actual Stripe sandbox, partial/applied refunds, disputes, abuse budgets and deployed operations outstanding |
 | Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding            |
 | Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
-| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0008 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
+| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0010 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
 | Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Unverified                                                                                                                                                                                                                                                                               |
 | Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Planned                                                                                                                                                                                                                                                                                  |
-| Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | Planned                                                                                                                                                                                                                                                                                  |
+| Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 58 fast, 143 existing integration and six monitoring cases verified across full/recheck runs; last full report retains two image-download failures; deployed receivers/log retention, host monitoring and restore/incident rehearsal outstanding |
 | Data lifecycle         | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules             | Planned                                                                                                                                                                                                                                                                                  |
 
 ## Evidence policy
@@ -665,3 +665,73 @@ use `applied` rather than provider `paid` to acknowledge shipment payment succes
 Real provider/browser journeys, migration/backfill rehearsal, operators/alerts,
 deploy/CD, restore drills and load evidence remain release gates. Completion is
 **8/10**, a scoped planning estimate; production readiness remains unverified.
+
+## Observability and operational health — 2026-11-04
+
+PR-07/08/10/11/14/18/20 acceptance: runtime logs omit credentials/personal payloads;
+request IDs correlate HTTP and authentication events without trusting caller IDs;
+metric labels stay bounded; liveness is independent of dependencies; readiness
+fails on unavailable/outdated database schema and drain; private metrics expose
+dependency/transport/backlog state without causing unbounded probe work; real
+rules and controlled alert delivery/acknowledgement are exercised.
+
+Implemented JSON request/background events with allowed fields, safe error
+responses retaining HTTP status, route templates and AsyncLocalStorage correlation.
+Raw request logging and development SQL parameter logging are removed. Metrics
+use the maintained pinned @prometheus-io/client 0.16.1 package and the Bun lockfile.
+The initial prom-client install was reported deprecated by npm and replaced;
+no deprecated direct metrics dependency remains. No clean vulnerability scan is
+claimed from installing dependencies; dependency security triage remains a gate.
+
+Liveness remains dependency-free. Readiness caches/single-flights a required-schema
+query with deadlines and fails during drain. Redis is observed as asynchronous
+degradation, preserving the ability to capture durable work while delivery is
+down. Metrics require an independent optional METRICS_TOKEN; missing configuration
+disables the endpoint. PostgreSQL/Redis addresses and raw errors are not public.
+Neon transport timing/errors, request histograms/in-flight work, process RSS,
+background failures and reconciliation outcomes are instrumented. Durable backlog
+queries seek indexed oldest records and preserve their last-good timestamp on
+collection failure; they do not perform full-table counts. Migration 0010 adds
+two partial indexes. Backfill/index lock timing still needs deployment rehearsal.
+
+Optional local Prometheus/Alertmanager configuration includes latency/error,
+dependency, dead-letter, overdue-work/lease, review and stale-telemetry alerts.
+Monitoring ports bind to loopback, scraper credentials are a secret file, and the
+default receiver is unconfigured. A deployed receiver, responder, retention/access
+policy and notification drill must be established before release. No external
+message, production monitor, frontend edit or live migration was performed.
+
+Initial focused evidence used Prometheus 3.5.0 and Alertmanager 0.28.1. A support
+check identified the older Prometheus release as out of support; final configuration
+and verification use Prometheus 3.13.5 and Alertmanager 0.34.2 from the projects'
+Quay registry. The rule fixture evaluates pending/firing/recovered review state
+and repeated reconciliation failures. A real
+Prometheus scrapes an actual PostgreSQL review record, waits through the shipped
+one-minute hold and delivers through Alertmanager to a local HTTP receiver; an
+Alertmanager silence acknowledges the synthetic incident. No provider delivery
+is inferred.
+
+Final local verification: lint, type checks, the Bun build (935 modules, 3.53 MB)
+and frozen-lockfile installation passed. All 58 fast cases passed without skips.
+The latest full integration run finished with 147 of 149 cases passing in 640.896
+seconds: all 143 existing integration cases passed, while two monitoring cases
+failed because their container images could not be downloaded. The unsuccessful
+reports/integration.xml and integration.json are retained without rewriting them
+as a green run. After the supported images finished downloading, all six
+observability cases passed in 90.149 seconds, without skips or todos; validated
+evidence is retained in reports/observability-final.xml and .json. This is split
+full-run/recheck evidence, not a single successful 149-case run.
+
+Earlier failed and interrupted full runs are retained in
+reports/integration-before-observability-recheck.* and
+reports/integration-interrupted-monitoring.*. The two unchanged cases affected by
+the earlier shared host stall passed their focused recheck, retained in
+reports/monitoring-recovery.xml. CI now prepares all four service images before
+the integration phase so image-download failures are reported separately from
+test execution. Remote GitHub Actions execution remains unverified.
+
+See docs/observability.md for contracts, thresholds, cardinality/cost constraints,
+local setup and response procedures. Complete Bun entrypoint/hosted Neon, ingress,
+provider journeys, remote CI, deployed log/alert routing, overhead/load, operating
+ownership and restoration remain release gates. Completion remains **8/10** while
+those material operational and release checks are outstanding.
