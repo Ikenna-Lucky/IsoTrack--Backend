@@ -111,10 +111,14 @@ export function createShipmentCommandRouter(store: WriteStore) {
         throw new Error("Invalid shipment command result");
       c.header("Idempotency-Replayed", String(result.replayed));
       const shipment = Object.fromEntries(
-        Object.entries(result.response).map(([key, value]) => [
-          key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()),
-          value,
-        ]),
+        Object.entries(result.response)
+          .filter(([key]) => role === "business" || key !== "recipient_email")
+          .map(([key, value]) => [
+            key.replace(/_([a-z])/g, (_, letter: string) =>
+              letter.toUpperCase(),
+            ),
+            value,
+          ]),
       );
       return c.json({
         success: true,

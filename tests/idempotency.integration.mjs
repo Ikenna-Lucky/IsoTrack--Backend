@@ -44,6 +44,24 @@ const store = {
   },
 };
 let provider;
+async function reauthenticateOwner() {
+  const version = Number(
+    await postgres.query(
+      sql`select credential_version from users where id='owner-a'`,
+    ),
+  );
+  const sid = `sess_${randomUUID().replaceAll("-", "").slice(0, 16)}`;
+  await postgres.query(openSessionStatement(sid, "owner-a", version, 3600));
+  tokens.set(
+    "owner-a",
+    await new SignJWT({ type: "access", role: "business", sid })
+      .setProtectedHeader({ alg: "HS256" })
+      .setSubject("owner-a")
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(secret),
+  );
+}
 before(async () => {
   await postgres.start();
   for (const name of [
@@ -54,7 +72,12 @@ before(async () => {
     "0005_auth_sessions",
     "0006_notification_outbox",
     "0007_request_idempotency",
+    "0008_account_actions",
     "0009_payment_lifecycle",
+    "0010_operational_indexes",
+    "0011_shipment_commands",
+    "0012_shipment_pagination",
+    "0013_delivery_confirmation",
   ]) {
     await postgres.query(
       sql.raw(
@@ -98,6 +121,7 @@ beforeEach(async () => {
     sql`truncate shipments,shipment_events,payments,notifications,notification_outbox,idempotency_requests cascade`,
   );
   await postgres.query(sql`update users set email=id||'@example.test'`);
+  await reauthenticateOwner();
   provider.reset();
 });
 after(async () => {
@@ -550,6 +574,9 @@ test("provider accepted response loss retries identical parameters across a new 
   await postgres.query(
     sql`update users set email='new-address@example.test' where id='owner-a'`,
   );
+  // Email changes invalidate old sessions on the complete schema. Model a
+  // fresh login before checking immutable provider parameters across retries.
+  await reauthenticateOwner();
   const retry = await post(
     app({ frontendUrl: "https://new-domain.example.test" }),
     "/payments/initialize",

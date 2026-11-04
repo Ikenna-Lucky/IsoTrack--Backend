@@ -24,7 +24,7 @@ export function shipmentPageStatement(
       and exists(select 1 from users u where u.id=${actor.userId} and u.is_active and u.role::text=${actor.role})
       ${position} order by s.created_at desc,s.id collate "C" desc limit ${page.limit + 1}
   ) select jsonb_build_object(
-    'shipment',to_jsonb(p),
+    'shipment',to_jsonb(p) ${actor.role === "business" ? sql`` : sql`-'recipient_email'`},
     'time',to_char(p.created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
     'customer',(select jsonb_build_object('id',u.id,'name',u.name,'email',u.email,'phone',u.phone,'avatar',u.avatar) from users u where u.id=p.customer_id),
     'driver',(select jsonb_build_object('id',d.id,'vehicleType',d.vehicle_type,'vehiclePlate',d.vehicle_plate,

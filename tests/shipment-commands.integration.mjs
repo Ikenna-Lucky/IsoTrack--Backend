@@ -323,7 +323,7 @@ test("expired keys stay tombstones and unrelated GPS/payment changes preserve co
   assert.equal((await state()).events, 1);
 });
 
-test("complete delivery advances versions and timestamps while rejected commands leave no reservations", async () => {
+test("delivery progression advances versions but final completion requires recipient proof", async () => {
   assert.equal(
     (
       await send(
@@ -362,7 +362,6 @@ test("complete delivery advances versions and timestamps while rejected commands
     "picked_up",
     "in_transit",
     "out_for_delivery",
-    "delivered",
   ].entries()) {
     const response = await send(
       "status",
@@ -377,16 +376,20 @@ test("complete delivery advances versions and timestamps while rejected commands
     if (index === 0) pickup = data.actualPickup;
     assert.ok(pickup);
     assert.equal(data.actualPickup, pickup);
-    if (status === "delivered") assert.ok(data.actualDelivery);
-    else assert.equal(data.actualDelivery, null);
+    assert.equal(data.actualDelivery, null);
   }
   assert.equal(
-    (await send("cancel", { expectedVersion: 5 }, key("terminal-cancel")))
-      .status,
+    (
+      await send(
+        "status",
+        { expectedVersion: 4, status: "delivered" },
+        key("proof-required"),
+      )
+    ).status,
     422,
   );
   const current = await state();
-  assert.equal(current.events, 5);
-  assert.equal(current.requests, 5);
-  assert.equal(current.version, 5);
+  assert.equal(current.events, 4);
+  assert.equal(current.requests, 4);
+  assert.equal(current.version, 4);
 });

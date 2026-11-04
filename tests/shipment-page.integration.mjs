@@ -185,7 +185,7 @@ test("cursor preserves sub-millisecond ordering instead of truncating timestamps
   assert.equal(second.data.at(-1).id, "s-055");
 });
 test("driver filters and fleet changes are rechecked and relation fields stay private", async () => {
-  await query("update shipments set status='delivered' where id='s-055'");
+  await query("update shipments set status='cancelled' where id='s-055'");
   assert.equal((await page("limit=1", "rider")).data[0].id, "s-054");
   const all = await page("limit=1&includeCompleted=true", "rider");
   assert.equal(all.data[0].id, "s-055");

@@ -11,6 +11,8 @@
     "test:unit": "node scripts/run-tests.mjs unit",
     "test:integration": "node scripts/run-tests.mjs integration",
     "recovery:drill": "node scripts/run-tests.mjs recovery",
+    "delivery:status": "bun run src/db/delivery-operations.ts status",
+    "delivery:purge": "bun run src/db/delivery-operations.ts purge",
     "lint": "eslint src tests scripts eslint.config.mjs --max-warnings 0",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun run src/db/migrate.ts",

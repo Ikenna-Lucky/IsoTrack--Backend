@@ -55,6 +55,13 @@ const envSchema = z
     ),
 
     UPSTASH_REDIS_URL: z.string().min(1, "UPSTASH_REDIS_URL is required"),
+    DELIVERY_CODE_SECRET: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .regex(/^[a-f0-9]{64}$/i)
+        .optional(),
+    ),
 
     GMAIL_USER: z.string().email("GMAIL_USER must be a valid Gmail address"),
     GMAIL_APP_PASSWORD: z

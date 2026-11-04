@@ -1,5 +1,9 @@
 # Retrying shipment updates safely
 
+Delivery completion now uses recipient confirmation, not a direct `delivered`
+status update. See [delivery confirmation](delivery-confirmation.md). Recipient
+email changes also advance the workflow version; the business manages that email.
+
 Apply migration `0011_shipment_commands.sql` before this backend serves writes.
 This is a coordinated API change for three routes:
 

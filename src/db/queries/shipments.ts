@@ -16,6 +16,7 @@ import type { NewShipment, Shipment } from "@/db/schema";
 
 export async function findShipmentById(id: string, actor: ShipmentActor) {
   return db.query.shipments.findFirst({
+    columns: actor.role === "business" ? undefined : { recipientEmail: false },
     where: and(eq(shipments.id, id), shipmentAccessPredicate(shipments, actor)),
     with: {
       driver: { with: { user: { columns: shipmentContactColumns } } },
@@ -28,6 +29,7 @@ export async function findShipmentById(id: string, actor: ShipmentActor) {
 
 export async function findShipmentByTrackingId(trackingId: string) {
   return db.query.shipments.findFirst({
+    columns: { recipientEmail: false },
     where: eq(shipments.trackingId, trackingId.toUpperCase()),
     with: {
       driver: { with: { user: { columns: shipmentContactColumns } } },

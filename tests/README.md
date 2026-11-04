@@ -131,3 +131,12 @@ timestamp boundaries. A 10,000-row tied-timestamp batch checks deep seek plans;
 actual EXPLAIN ANALYZE JSON is retained in reports/shipment-page-plan-*.json.
 The standard unit/integration discovery includes these cases. See
 docs/shipment-pagination.md for contract and workload limits.
+
+The delivery suite creates `isotrack-delivery-test-*` PostgreSQL and local HTTP/SMTP
+servers. It uses the complete migration chain, signed sessions, production code/
+proof functions, real SMTP capture and the durable email worker. It checks guest
+recipients, retry/race/fault recovery, authorization, expiry/lockout/resend limits,
+SQL bypass, private fields, worker fencing, queue metrics and retention. The
+checkout suite now applies the complete schema including email/session invalidation
+and explicitly establishes fresh fixture sessions after changing email. Test mail
+never leaves the local SMTP sink. See docs/delivery-confirmation.md.

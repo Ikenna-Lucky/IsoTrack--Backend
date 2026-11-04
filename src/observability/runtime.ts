@@ -13,6 +13,7 @@ const operations = new Set([
   "outbox_worker",
   "outbox_dispatch",
   "account_email",
+  "delivery_email",
   "account_action",
   "tracking",
   "payment_reconciliation",

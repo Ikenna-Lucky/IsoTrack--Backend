@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { createDeliveryEmailProcessor } from "./delivery-email";
 import { reportDependency } from "../observability/runtime";
 import { env } from "@/lib/env";
 import { outboxStore } from "@/db/outbox-store";
@@ -45,9 +46,25 @@ export function startNotificationWorker() {
       )
     : async () => {};
   if (!env.ACCOUNT_ACTION_SECRET) reportDependency("account_action");
+  const closeDeliveryEmails = env.DELIVERY_CODE_SECRET
+    ? startAccountEmailDispatcher(
+        createDeliveryEmailProcessor(
+          outboxStore,
+          env.DELIVERY_CODE_SECRET,
+          async (email) => {
+            await transporter.sendMail({ from: env.EMAIL_FROM, ...email });
+          },
+        ),
+        () => reportDependency("delivery_email"),
+      )
+    : async () => {};
   return {
     close: async () => {
-      await Promise.all([runtime.close(), closeAccountEmails()]);
+      await Promise.all([
+        runtime.close(),
+        closeAccountEmails(),
+        closeDeliveryEmails(),
+      ]);
       transporter.close();
     },
   };

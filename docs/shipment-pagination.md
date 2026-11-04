@@ -1,5 +1,8 @@
 # Shipment list pagination
 
+Recipient email is exposed only in business responses. Drivers/customers and
+public tracking do not receive that field; see delivery-confirmation.md.
+
 `GET /api/v1/shipments` now returns cursor pages for businesses, drivers and
 customers. Default `limit` is 20, maximum 50. Follow `pagination.nextCursor` with
 the same account and filter until it is null:

@@ -92,6 +92,13 @@
       "when": 1793664000008,
       "tag": "0012_shipment_pagination",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793664000009,
+      "tag": "0013_delivery_confirmation",
+      "breakpoints": true
     }
   ]
 }

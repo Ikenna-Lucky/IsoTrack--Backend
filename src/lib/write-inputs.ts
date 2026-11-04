@@ -9,6 +9,13 @@ const address = z
   .strict();
 export const shipmentInput = z
   .object({
+    recipientEmail: z
+      .string()
+      .trim()
+      .email()
+      .max(254)
+      .transform((value) => value.toLowerCase())
+      .optional(),
     description: z.string().trim().min(1).max(2000),
     weightKg: z.number().finite().positive().max(1000000),
     pickupAddress: address,

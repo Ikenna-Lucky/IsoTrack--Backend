@@ -239,7 +239,11 @@ test("backlog metrics read durable delayed work, dead letters, expired leases an
       new RegExp(`isotrack_backlog_present\\{queue="${queue}"\\} 1`),
     );
   const rows = (await metrics.snapshots.get()).values;
-  assert.ok(rows.every((row) => row.value >= 590));
+  assert.ok(
+    rows
+      .filter((row) => !row.labels.queue.startsWith("delivery_"))
+      .every((row) => row.value >= 590),
+  );
   await query("truncate payments,notification_outbox,account_actions cascade");
   active = app();
   await scrape();

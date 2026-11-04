@@ -14,3 +14,4 @@ export * from "./notification-outbox";
 export * from "./payments";
 export * from "./idempotency-requests";
 export * from "./driver-invitations";
+export * from "./delivery-confirmations";

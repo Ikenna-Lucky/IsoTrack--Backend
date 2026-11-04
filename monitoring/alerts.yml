@@ -28,19 +28,19 @@ groups:
             summary: "Durable backlog metrics are stale or have never succeeded",
           }
       - alert: IsoTrackBackgroundWorkStuck
-        expr: isotrack_backlog_oldest_seconds{queue=~"notifications|account_emails|payments"} > 600
+        expr: isotrack_backlog_oldest_seconds{queue=~"notifications|account_emails|delivery_emails|payments"} > 600
         for: 2m
         labels: { severity: warning }
         annotations:
           { summary: "Durable work is overdue by more than ten minutes" }
       - alert: IsoTrackExpiredWorkerLease
-        expr: isotrack_backlog_oldest_seconds{queue=~"notification_leases|account_email_leases"} > 120
+        expr: isotrack_backlog_oldest_seconds{queue=~"notification_leases|account_email_leases|delivery_email_leases"} > 120
         for: 2m
         labels: { severity: warning }
         annotations:
           { summary: "Expired notification leases are not being reclaimed" }
       - alert: IsoTrackDeadLetters
-        expr: isotrack_backlog_present{queue=~"notification_dead|account_email_dead"} == 1
+        expr: isotrack_backlog_present{queue=~"notification_dead|account_email_dead|delivery_email_dead"} == 1
         for: 2m
         labels: { severity: warning }
         annotations:

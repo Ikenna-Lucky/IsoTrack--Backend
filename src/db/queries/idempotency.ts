@@ -87,10 +87,10 @@ export function createShipmentOnceStatement(
         select 1 from users c where c.id=r.parameters->>'customerId' and c.is_active and c.role='customer'))
     for update of r
   ), created as (
-    insert into shipments(id,tracking_id,business_id,customer_id,description,weight_kg,pickup_address,delivery_address,price_kobo,scheduled_pickup)
+    insert into shipments(id,tracking_id,business_id,customer_id,description,weight_kg,pickup_address,delivery_address,price_kobo,scheduled_pickup,recipient_email)
     select resource_id,parameters->>'trackingId',parameters->>'businessId',parameters->>'customerId',
       parameters->>'description',(parameters->>'weightKg')::real,parameters->'pickupAddress',parameters->'deliveryAddress',
-      (parameters->>'priceKobo')::integer,(parameters->>'scheduledPickup')::timestamptz from owned returning *
+      (parameters->>'priceKobo')::integer,(parameters->>'scheduledPickup')::timestamptz,parameters->>'recipientEmail' from owned returning *
   ), recorded as (
     insert into shipment_events(id,shipment_id,status,message)
     select owned.parameters->>'eventId',created.id,created.status,'Shipment created' from owned,created returning shipment_id

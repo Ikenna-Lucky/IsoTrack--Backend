@@ -25,6 +25,7 @@ export const shipments = pgTable(
     trackingId: text("tracking_id").notNull().unique(),
     status: shipmentStatusEnum("status").default("pending").notNull(),
     version: integer("version").default(0).notNull(),
+    recipientEmail: text("recipient_email"),
 
     // Parties
     businessId: text("business_id")
