@@ -4,7 +4,14 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { mkdtemp, writeFile, copyFile, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  writeFile,
+  copyFile,
+  chmod,
+  mkdir,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,6 +77,61 @@ async function until(check, timeout = 30000) {
     if (result) return result;
     if (Date.now() > end) throw new Error("Fixture condition deadline");
     await delay(250);
+  }
+}
+async function containerDiagnostic(name) {
+  const inspect = await docker("inspect", "--format", "{{json .State}}", name)
+    .then((result) => JSON.parse(result.stdout))
+    .catch(() => ({ unavailable: true }));
+  const output = await docker("logs", "--tail", "80", name)
+    .then((result) => `${result.stdout}${result.stderr}`)
+    .catch(() => "Container logs unavailable");
+  const diagnostic = {
+    name,
+    state: inspect,
+    logs: output.replaceAll(token, "[redacted]"),
+  };
+  await mkdir(join(root, "reports"), { recursive: true });
+  await writeFile(
+    join(
+      root,
+      `reports/monitoring-${name.includes("-am-") ? "alertmanager" : "prometheus"}-diagnostic.json`,
+    ),
+    JSON.stringify(diagnostic, null, 2) + "\n",
+  );
+  return diagnostic;
+}
+async function readyContainerPort(name, internalPort) {
+  try {
+    const port = Number(
+      (await docker("port", name, `${internalPort}/tcp`)).stdout
+        .trim()
+        .split(":")
+        .at(-1),
+    );
+    assert.ok(
+      Number.isInteger(port) && port > 0,
+      "Missing published fixture port",
+    );
+    await until(async () => {
+      const state = JSON.parse(
+        (await docker("inspect", "--format", "{{json .State}}", name)).stdout,
+      );
+      if (!state.Running)
+        throw new Error(`${name} exited with code ${state.ExitCode}`);
+      return fetch(`http://127.0.0.1:${port}/-/ready`, {
+        signal: AbortSignal.timeout(1000),
+      })
+        .then((response) => response.ok)
+        .catch(() => false);
+    });
+    return port;
+  } catch (error) {
+    const diagnostic = await containerDiagnostic(name);
+    throw new Error(
+      `Monitoring container startup failed: ${JSON.stringify(diagnostic)}`,
+      { cause: error },
+    );
   }
 }
 function app(options = {}) {
@@ -157,6 +219,9 @@ before(async () => {
   if (!server.listening) await once(server, "listening");
   base = `http://127.0.0.1:${server.address().port}`;
   folder = await mkdtemp(join(tmpdir(), "isotrack-monitor-"));
+  // mkdtemp uses 0700 on Linux. The images' non-root users must traverse
+  // this synthetic-config directory through the read-only bind mount.
+  await chmod(folder, 0o755);
 });
 beforeEach(async () => {
   await query("truncate payments,notification_outbox,account_actions cascade");
@@ -265,6 +330,8 @@ test("Prometheus validates production rules and evaluates held, firing and recov
     join(root, "tests/fixtures/alerts.test.yml"),
     join(folder, "rules-test.yml"),
   );
+  await chmod(join(folder, "alerts.yml"), 0o644);
+  await chmod(join(folder, "rules-test.yml"), 0o644);
   const result = await docker(
     "run",
     "--rm",
@@ -293,11 +360,11 @@ test("real Prometheus scrapes SQL-backed review metrics and Alertmanager deliver
     `route:\n  receiver: local\n  group_by: [alertname]\n  group_wait: 1s\n  group_interval: 1s\n  repeat_interval: 1h\nreceivers:\n  - name: local\n    webhook_configs:\n      - url: http://host.docker.internal:${port}/receiver\n        send_resolved: true\n`,
   );
   const am = `isotrack-monitor-am-${id}`;
+  await chmod(join(folder, "alertmanager.yml"), 0o644);
   containers.push(am);
   await docker(
     "run",
     "--detach",
-    "--rm",
     "--name",
     am,
     "--network",
@@ -313,9 +380,7 @@ test("real Prometheus scrapes SQL-backed review metrics and Alertmanager deliver
     "quay.io/prometheus/alertmanager:v0.34.2",
     "--config.file=/config/alertmanager.yml",
   );
-  const amPort = Number(
-    (await docker("port", am, "9093/tcp")).stdout.trim().split(":").at(-1),
-  );
+  const amPort = await readyContainerPort(am, 9093);
   await writeFile(
     join(folder, "prometheus.yml"),
     // Match the production scrape cadence. A 1s scrape also imposed a 1s
@@ -323,11 +388,11 @@ test("real Prometheus scrapes SQL-backed review metrics and Alertmanager deliver
     `global:\n  scrape_interval: 15s\n  scrape_timeout: 10s\n  evaluation_interval: 1s\nrule_files: [/config/alerts.yml]\nalerting:\n  alertmanagers:\n    - static_configs:\n        - targets: [alertmanager:9093]\nscrape_configs:\n  - job_name: isotrack\n    metrics_path: /metrics\n    authorization:\n      type: Bearer\n      credentials: ${token}\n    static_configs:\n      - targets: [host.docker.internal:${port}]\n`,
   );
   const prom = `isotrack-monitor-prom-${id}`;
+  await chmod(join(folder, "prometheus.yml"), 0o644);
   containers.push(prom);
   await docker(
     "run",
     "--detach",
-    "--rm",
     "--name",
     prom,
     "--network",
@@ -341,6 +406,7 @@ test("real Prometheus scrapes SQL-backed review metrics and Alertmanager deliver
     "quay.io/prometheus/prometheus:v3.13.5",
     "--config.file=/config/prometheus.yml",
   );
+  const promPort = await readyContainerPort(prom, 9090);
   try {
     await until(
       () =>
@@ -354,9 +420,8 @@ test("real Prometheus scrapes SQL-backed review metrics and Alertmanager deliver
       120000,
     );
   } catch (error) {
-    const promPort = Number(
-      (await docker("port", prom, "9090/tcp")).stdout.trim().split(":").at(-1),
-    );
+    await containerDiagnostic(am);
+    await containerDiagnostic(prom);
     const response = await fetch(
       `http://127.0.0.1:${promPort}/api/v1/targets`,
       { signal: AbortSignal.timeout(3000) },

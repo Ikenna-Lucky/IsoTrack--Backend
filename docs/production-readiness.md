@@ -1036,3 +1036,35 @@ Validated `reports/integration-9-of-13.xml` and `.json` identify exactly
 `tests/shipment-access.integration.mjs` and shard 9/13, independently of the complete
 run's reports. This smoke run checks the new execution/report path; it is not an
 additional 53 distinct cases and does not establish the three remote matrix runs.
+
+## 2026-11-05 — Linux monitoring fixture permissions
+
+User-provided GitHub Actions logs show integration group 2 executed 32 tests:
+30 passed and two monitoring cases failed. Rule validation reported
+`stat rules-test.yml: permission denied`; the alert drill failed retrieving
+Alertmanager's published 9093 port. The latter is a startup symptom; its original
+container logs were not available, so its precise cause is not independently proven.
+The final `checks` job correctly rejected the failing integration group.
+
+The fixture's mkdtemp directory was owner-only (0700 on Linux) while Prometheus and
+Alertmanager use non-root container users. Synthetic configuration now uses a
+0755 directory and explicitly 0644 files, with the bind mount still read-only.
+Containers retain their default users. Long-lived monitoring containers are retained
+until the existing after-hook cleanup, allowing startup failures to save their state
+and bounded logs. Readiness is checked before using the services. Diagnostics redact
+the synthetic metrics token and are included in integration CI artifacts.
+
+An isolated Linux Docker volume reproduced the exact promtool permission denial
+with mode 0700 (exit 1). With directory 0755 and files 0644, the same default-user
+Prometheus image passed the production rule tests (exit 0, SUCCESS). Evidence:
+reports/monitoring-linux-permissions.json. The disposable probe container and volume
+were removed. This establishes Linux filesystem behavior, not a full Linux backend run.
+
+All six monitoring integration cases passed in 96.824 seconds, zero failures,
+skips, cancellations or todos (reports/monitoring-ci-fix.xml). This includes rule
+pending/firing/recovery evaluation, actual alert delivery/acknowledgement, real
+PostgreSQL/Redis readiness and database-loss behavior. Lint passed. Application
+code, migration history, test assertions and action versions are unchanged; existing
+action allowlist entries still apply. Node-action deprecation warnings remain a
+separate maintenance item. No new full regression was needed for this fixture-only
+change. Updated remote CI success is pending; completion estimate remains 8.5/10.

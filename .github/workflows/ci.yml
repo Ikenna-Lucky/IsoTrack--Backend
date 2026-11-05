@@ -77,7 +77,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend-integration-${{ matrix.shard }}-of-3
-          path: reports/integration-${{ matrix.shard }}-of-3.*
+          path: |
+            reports/integration-${{ matrix.shard }}-of-3.*
+            reports/monitoring-*-diagnostic.json
           if-no-files-found: error
           retention-days: 14
 

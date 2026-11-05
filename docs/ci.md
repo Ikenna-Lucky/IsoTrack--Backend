@@ -112,3 +112,7 @@ See production-readiness.md for artifact attribution and remaining release gates
 The grouped runner smoke check (integration 9/13) also passed all 53 cases in
 77.690 seconds and produced independent validated XML/JSON reports. The actual
 three-group GitHub matrix remains unverified remotely.
+
+Monitoring fixtures grant read/traverse access to synthetic configs for non-root
+container users while keeping mounts read-only. Startup failures retain bounded
+container diagnostics in the affected integration artifact under monitoring-*-diagnostic.json.
