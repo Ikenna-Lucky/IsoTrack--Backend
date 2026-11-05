@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { ShipmentActor } from "./shipment-access.ts";
+import type { ShipmentPage } from "../../lib/shipment-page.ts";
 
 // Keep API fields explicit: adding a database column must not publish it.
 const shipmentFields = [
@@ -54,15 +55,16 @@ function projection(actor: ShipmentActor) {
     'driver',(select ${fields("d", ["id", "vehicle_type", "vehicle_plate"])} || jsonb_build_object('user',${fields("u", ["id", "name", "email", "phone", "avatar"])})
       from drivers d join users u on u.id=d.user_id where d.id=s.driver_id and d.business_id=s.business_id))`;
 }
+function scope(actor: ShipmentActor) {
+  return actor.role === "business"
+    ? sql`exists(select 1 from businesses where id=s.business_id and user_id=${actor.userId})`
+    : actor.role === "driver"
+      ? sql`exists(select 1 from drivers where id=s.driver_id and user_id=${actor.userId} and business_id=s.business_id)`
+      : actor.role === "customer"
+        ? sql`s.customer_id=${actor.userId}`
+        : sql`false`;
+}
 export function shipmentDetailStatement(actor: ShipmentActor, id: string) {
-  const scope =
-    actor.role === "business"
-      ? sql`exists(select 1 from businesses where id=s.business_id and user_id=${actor.userId})`
-      : actor.role === "driver"
-        ? sql`exists(select 1 from drivers where id=s.driver_id and user_id=${actor.userId} and business_id=s.business_id)`
-        : actor.role === "customer"
-          ? sql`s.customer_id=${actor.userId}`
-          : sql`false`;
   return sql`select ${projection(actor)} || jsonb_build_object(
     'payment',case when ${actor.role}='driver' then null else (
       select ${fields("p", ["id", "amount_kobo", "status", "channel", "paid_at", "created_at"])}
@@ -71,7 +73,24 @@ export function shipmentDetailStatement(actor: ShipmentActor, id: string) {
       select ${fields("e", ["id", "shipment_id", "status", "message", "location", "created_at"])} payload,e.created_at,e.id
       from shipment_events e where e.shipment_id=s.id order by e.created_at desc,e.id collate "C" desc limit 50) e),'[]'::jsonb),
     'eventsTruncated',(select count(*)>50 from (select 1 from shipment_events where shipment_id=s.id limit 51) e)
-  ) as result from shipments s where s.id=${id} and ${scope} and ${active(actor)}`;
+  ) as result from shipments s where s.id=${id} and ${scope(actor)} and ${active(actor)}`;
+}
+export function shipmentEventsStatement(
+  actor: ShipmentActor,
+  id: string,
+  page: ShipmentPage,
+) {
+  const position = page.position
+    ? sql`and (e.created_at,e.id collate "C") < (${page.position.time}::timestamptz,${page.position.id} collate "C")`
+    : sql``;
+  // The outer row distinguishes an authorized empty history from a foreign ID.
+  return sql`select jsonb_build_object('events',coalesce((
+    select jsonb_agg(jsonb_build_object('event',e.payload,'time',e.time) order by e.created_at desc,e.id collate "C" desc)
+    from (select ${fields("e", ["id", "shipment_id", "status", "message", "location", "created_at"])} payload,e.created_at,e.id,
+      to_char(e.created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') time
+      from shipment_events e where e.shipment_id=s.id ${position}
+      order by e.created_at desc,e.id collate "C" desc limit ${page.limit + 1}) e
+  ),'[]'::jsonb)) as result from shipments s where s.id=${id} and ${scope(actor)} and ${active(actor)}`;
 }
 export function businessAnalyticsStatement(actor: ShipmentActor) {
   return sql`with owned as materialized (

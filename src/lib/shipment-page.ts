@@ -40,9 +40,28 @@ export function parseShipmentPage(
   params: URLSearchParams,
   actor: ShipmentActor,
 ): ShipmentPage {
+  return parsePage(params, actor);
+}
+export function parseShipmentEventPage(
+  params: URLSearchParams,
+  actor: ShipmentActor,
+  shipmentId: string,
+): ShipmentPage {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(shipmentId)) throw invalid();
+  return parsePage(params, actor, shipmentId);
+}
+function parsePage(
+  params: URLSearchParams,
+  actor: ShipmentActor,
+  historyFor?: string,
+): ShipmentPage {
   for (const name of params.keys())
     if (
-      !["limit", "cursor", "includeCompleted"].includes(name) ||
+      !(
+        historyFor
+          ? ["limit", "cursor"]
+          : ["limit", "cursor", "includeCompleted"]
+      ).includes(name) ||
       params.getAll(name).length !== 1
     )
       throw invalid();
@@ -56,7 +75,11 @@ export function parseShipmentPage(
     throw invalid();
   const includeCompleted = completed === "true";
   const scope = hashValue(
-    JSON.stringify([actor.userId, actor.role, includeCompleted]),
+    JSON.stringify(
+      historyFor
+        ? ["shipment-events", actor.userId, actor.role, historyFor]
+        : [actor.userId, actor.role, includeCompleted],
+    ),
   );
   let position: ShipmentPosition | null = null;
   const cursor = params.get("cursor");

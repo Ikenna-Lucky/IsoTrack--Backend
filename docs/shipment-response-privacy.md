@@ -25,8 +25,9 @@ ordered by creation time then ID, and is not a reconciliation report.
 
 Details return the latest 50 events with deterministic time/ID ordering.
 `eventsTruncated=true` explicitly signals omitted older history. Events are not
-deleted. There is no older-history HTTP page endpoint yet; this is a deliberate
-development-branch contract change that frontend adoption must handle. No deployed
+deleted. Older history is available through `GET /api/v1/shipments/:id/events`;
+see tracking-history.md for cursor and authorization rules. These are
+development-branch contract changes that frontend adoption must handle. No deployed
 frontend compatibility has been verified. Missing and foreign IDs both return 404.
 Successful/route-level denied responses use Cache-Control: no-store.
 
@@ -52,6 +53,6 @@ tenant analytics, missing profiles, storage faults and a newly added private
 database column. The safe-integer handler test supplies synthetic totals; it does
 not claim a multi-million-row database test. CI automatically discovers both files.
 
-This scope does not establish privacy of every endpoint, public tracking payloads,
-historical idempotency responses, logs, provider dashboards or backups. Public-link
-address/event visibility and full history pagination remain separate work.
+This scope does not establish privacy of every endpoint, historical idempotency
+responses, logs, provider dashboards or backups. Public tracking now has a reduced
+status/date contract, documented with authenticated history in tracking-history.md.

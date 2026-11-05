@@ -1,4 +1,3 @@
-import { shipmentContactColumns } from "@/db/queries/user-columns";
 import {
   shipmentAccessPredicate,
   shipmentTransitionStatement,
@@ -7,9 +6,9 @@ import {
   type ShipmentTransition,
 } from "./shipment-access";
 import { nanoid } from "nanoid";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { shipments, shipmentEvents } from "@/db/schema";
+import { shipments } from "@/db/schema";
 import type { NewShipment, Shipment } from "@/db/schema";
 
 // ─── Read ──────────────────────────────────────────────────────────────────────
@@ -28,17 +27,6 @@ export async function findShipmentById(id: string, actor: ShipmentActor) {
     )
     .limit(1);
   return row;
-}
-
-export async function findShipmentByTrackingId(trackingId: string) {
-  return db.query.shipments.findFirst({
-    columns: { recipientEmail: false },
-    where: eq(shipments.trackingId, trackingId.toUpperCase()),
-    with: {
-      driver: { with: { user: { columns: shipmentContactColumns } } },
-      events: { orderBy: desc(shipmentEvents.createdAt) },
-    },
-  });
 }
 
 // ─── Write ─────────────────────────────────────────────────────────────────────

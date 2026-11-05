@@ -1,30 +1,49 @@
-import type { findShipmentByTrackingId } from "@/db/queries/shipments";
+import { z } from "zod";
 
-type TrackedShipment = NonNullable<
-  Awaited<ReturnType<typeof findShipmentByTrackingId>>
->;
+const publicStatusMessages = {
+  pending: "Shipment created",
+  assigned: "Driver assigned",
+  picked_up: "Shipment picked up",
+  in_transit: "Shipment in transit",
+  out_for_delivery: "Shipment out for delivery",
+  delivered: "Shipment delivered",
+  failed: "Delivery attempt unsuccessful",
+  cancelled: "Shipment cancelled",
+} as const;
+const status = z.enum([
+  "pending",
+  "assigned",
+  "picked_up",
+  "in_transit",
+  "out_for_delivery",
+  "delivered",
+  "failed",
+  "cancelled",
+]);
+const publicRecord = z.object({
+  trackingId: z.string(),
+  status,
+  scheduledPickup: z.string().nullable(),
+  estimatedDelivery: z.string().nullable(),
+  actualDelivery: z.string().nullable(),
+  events: z.array(z.object({ status, createdAt: z.string() })).max(21),
+});
 
-export function publicTrackingView(shipment: TrackedShipment) {
+export function publicTrackingView(input: unknown) {
+  const shipment = publicRecord.parse(input);
   return {
     trackingId: shipment.trackingId,
     status: shipment.status,
-    description: shipment.description,
-    pickupAddress: shipment.pickupAddress,
-    deliveryAddress: shipment.deliveryAddress,
-    // Public links retain their response shape, without exposing live GPS.
-    currentLocation: null,
     scheduledPickup: shipment.scheduledPickup,
     estimatedDelivery: shipment.estimatedDelivery,
     actualDelivery: shipment.actualDelivery,
-    events: shipment.events,
-    driver: shipment.driver
-      ? {
-          name: shipment.driver.user?.name,
-          vehicleType: shipment.driver.vehicleType,
-          vehiclePlate: shipment.driver.vehiclePlate,
-          rating: shipment.driver.rating,
-          currentLocation: null,
-        }
-      : null,
+    events: shipment.events
+      .slice(0, 20)
+      .map((event) => ({
+        status: event.status,
+        createdAt: event.createdAt,
+        message: publicStatusMessages[event.status],
+      })),
+    eventsTruncated: shipment.events.length > 20,
   };
 }

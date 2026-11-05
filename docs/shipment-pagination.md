@@ -54,8 +54,9 @@ determines `hasMore`, then is discarded. There is no OFFSET or COUNT query.
 Contact lookups and event subqueries run only for those selected rows. Driver
 pages include at most one recent event per shipment; customer pages include at
 most three; business pages include no event history (an empty `events` array).
-For full history use the detail endpoint, whose history pagination is separate
-remaining work. Bounded rows do not guarantee a byte ceiling for legacy JSON data.
+For full history use `GET /api/v1/shipments/:id/events`, documented in
+tracking-history.md. Detail includes only a 50-event preview. Bounded rows do not
+guarantee a byte ceiling for legacy JSON data.
 
 Account contacts expose only ID, name, email, phone and avatar. The driver
 relation now exposes ID, vehicle type/plate and approved user contact fields.

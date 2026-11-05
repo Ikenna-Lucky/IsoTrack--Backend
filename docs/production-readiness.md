@@ -8,7 +8,7 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8.5/10** after local regression, performance baselines, retention and shipment read privacy checks
+Current completion estimate: **8.5/10** after local regression, performance baselines, retention, shipment read privacy and public tracking/history checks
 (2026-11-05). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
@@ -20,13 +20,13 @@ deployed observability, load testing and hosted recovery evidence remain substan
 | Workstream             | Acceptance criteria                                                                                                 | Current status                                                                                                                                                                                                                                                                           |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports          | Complete local regression: 191 integration and 64 fast cases pass, lint/types/build pass; CI has three disjoint integration groups, independent reports and a final gate; GitHub/Linux execution and repository merge rules remain unverified                                                                          |
-| Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | List, detail and analytics contact/driver boundaries verified through authenticated HTTP/PostgreSQL; detail payment fields restricted, event history bounded; hosted/client adoption and other response surfaces remain outstanding                                                                                                                                                                                                                                     |
+| Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | List, detail and analytics boundaries plus minimal public tracking verified locally through HTTP/PostgreSQL; authenticated event history uses scoped cursor pages; hosted/client adoption and other response surfaces remain outstanding                                                                                                                                                                                                                                     |
 | Private fleets         | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests           | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding                                                                                          |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail HTTP and SQL role/ownership/assignment checks verified locally; command HTTP, write-race and fleet denial verified; hosted/full-client verification outstanding                                                                                                                                                 |
 | Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, guarded login/signup/recovery HTTP, atomic signup and credential races verified locally; full app/browser journeys, verified-email policy, hosting ingress, provider and deployed evidence outstanding                       |
 | Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/update/history/outbox/saved results are atomic; creation and command replay, workflow versions, races, stale cycles and lost acknowledgements verified locally; Recipient-code delivery proof and failed-delivery/return custody verified locally; physical/recipient trust policy, client/hosted adoption and capacity outstanding                                                                                            |
 | Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Shipment checkout guards, reconciliation, single applied receipts, additional-money review and verified full-refund resolution pass local SQL/HTTP/fault tests; actual Stripe sandbox, partial/applied refunds, disputes, abuse budgets and deployed operations outstanding |
-| Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding            |
+| Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; minimal public-link status/date/event projection verified locally; frontend adoption, distributed adapter/budgets, public-link lifecycle/read abuse budgets, deployed networking and capacity evidence outstanding            |
 | Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
 | Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0015 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
 | Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Bounded cursor lists, seek plans and a 50,000-row/10-tenant local steady/burst/recovery baseline verified; 2,450 operations passed. Hosted transport, larger/skewed data, soak, workers and saturation remain unverified                                                                                                                                                                                                                                                                               |
@@ -1215,3 +1215,53 @@ full remote CI and frontend contract adoption are unverified for this artifact.
 Older-history HTTP paging, large-tenant analytics rollups/load, public tracking
 address/event privacy and other response surfaces remain outstanding. Completion
 remains 8.5/10, a planning estimate; production readiness remains unverified.
+
+
+## 2026-11-05 — Public tracking privacy and paginated event history
+
+PR-06/07/08: anonymous tracking now selects only status/dates and at most 21
+status/time event rows, returning twenty with a truncation flag. It no longer
+loads or exposes addresses, package description, driver identity/plate, GPS,
+payment fields, internal event/shipment IDs or arbitrary event messages. Public
+messages are fixed per status. Tracking IDs and query parameters are validated;
+route responses use no-store/noindex headers. No link lifecycle or distributed
+public-read limiter is claimed.
+
+Authenticated GET /api/v1/shipments/:id/events returns default twenty, maximum
+fifty events with one lookahead row and no OFFSET/COUNT. The shared detail/history
+SQL rechecks active role, owner/customer linkage or assigned private fleet in the
+same snapshot as event selection. Cursors bind shipment/account/role/endpoint,
+retain microseconds, and work after deletion of a boundary row. Existing list
+cursor format is preserved. No new migration is needed: the event scope/order
+index was introduced in 0012. See tracking-history.md for contracts, compatibility
+changes and live-list behavior.
+
+Evidence: Windows, Node 24.12.0, source base 3a33035 plus these working-tree changes.
+- Local integration command: node --test --test-concurrency=2 with spec/JUnit
+  reporters, covering tests/tracking-history.integration.mjs,
+  tests/shipment-reads.integration.mjs and tests/shipment-page.integration.mjs.
+  All 26/26 cases passed in 121.409 seconds; zero failures/cancellations/skips/todos.
+  Reports: reports/tracking-history.xml/.json. This is targeted regression,
+  not a new full backend integration/remote CI run.
+- The ten new cases use anonymous and signed JWT/session HTTP requests against
+  migrated disposable PostgreSQL 17. They cover exact public field keys/private
+  markers, standard messages/bounds, input rejection, all-role history traversal,
+  tenant/empty/unknown denial, revoked sessions, scoped/malformed cursors,
+  microseconds/deleted boundaries, assignment/fleet/active-role rechecks,
+  future private columns and sanitized storage faults.
+- The large-history case adds 20,000 same-timestamp events. EXPLAIN ANALYZE shows
+  public and deep-history event reads using shipment_events_page_idx, without
+  event sequential scans and with at most 21 event rows read per tested query.
+  Plans: reports/tracking-history-plan.json and reports/tracking-public-plan.json.
+  These local plan checks do not establish concurrent hosted capacity.
+- Fast suite: 71/71 passed in 3.386 seconds, zero skips/todos/cancellations/failures.
+  Lint, TypeScript and Bun build passed (953 modules, 3.58 MB). CI automatically
+  discovers the new integration file and existing fast-test changes.
+
+No frontend edits, main merge, push, live deployment, live DB migration or provider
+traffic occurred. Work remains on isoTrack-dev-branch. Public response reduction
+requires frontend adoption before promotion; hosted Neon/full runtime and remote
+CI evidence remain unverified for this artifact. Link expiration/rotation,
+distributed public-read abuse protection, full assembled journeys, provider sandbox,
+preview/deployment and hosted recovery/monitoring/capacity remain release work.
+Completion remains 8.5/10 (planning estimate); production readiness is unverified.

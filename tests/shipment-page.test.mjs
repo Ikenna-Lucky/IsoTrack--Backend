@@ -1,8 +1,43 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseShipmentPage, shipmentCursor } from "../src/lib/shipment-page.ts";
+import {
+  parseShipmentPage,
+  parseShipmentEventPage,
+  shipmentCursor,
+} from "../src/lib/shipment-page.ts";
 const actor = { userId: "owner", role: "business" };
 const parse = (q) => parseShipmentPage(new URLSearchParams(q), actor);
+
+test("history cursors are bound to endpoint, shipment, account and current role", () => {
+  const eventPage = (q, identity = actor, id = "shipment-a") =>
+    parseShipmentEventPage(new URLSearchParams(q), identity, id);
+  const scope = eventPage("").scope;
+  const cursor = shipmentCursor(
+    scope,
+    "2026-11-05T00:00:00.123456Z",
+    "event-a",
+  );
+  assert.equal(eventPage(`cursor=${cursor}`).position.id, "event-a");
+  for (const args of [
+    [`cursor=${cursor}`, actor, "shipment-b"],
+    [`cursor=${cursor}`, { userId: "other", role: "business" }],
+    [`cursor=${cursor}`, { ...actor, role: "customer" }],
+    ["includeCompleted=false"],
+    ["limit=51"],
+    ["cursor=bad"],
+    ["limit=2&limit=3"],
+    ["page=2"],
+    ["", actor, "bad/id"],
+  ])
+    assert.throws(() => eventPage(...args));
+  assert.throws(() => parse(`cursor=${cursor}`));
+  const listCursor = shipmentCursor(
+    parse("").scope,
+    "2026-11-05T00:00:00.123456Z",
+    "event-a",
+  );
+  assert.throws(() => eventPage(`cursor=${listCursor}`));
+});
 test("pagination defaults and bounded decimal limits", () => {
   assert.equal(parse("").limit, 20);
   assert.equal(parse("limit=50").limit, 50);
