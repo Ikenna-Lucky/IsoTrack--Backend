@@ -1,0 +1,129 @@
+# Backend load baseline
+
+This benchmark measures selected production HTTP handlers and SQL against an
+isolated PostgreSQL 17 database. It does not establish full application capacity,
+Neon HTTP transport performance, Bun performance or a supported user count.
+Millions of registered accounts and simultaneous requests are different workloads.
+
+## Reproduce
+
+Use Node 24.12.0, installed locked development dependencies, and Docker:
+
+```sh
+npm run test:load -- smoke
+npm run test:load -- baseline
+```
+
+The runner creates its own loopback PostgreSQL container, random disposable
+credentials and synthetic JWT sessions. No application .env is imported, no target
+URL or database URL is accepted, and no real providers or recipients are contacted.
+It cleans up its own container after success or failure. Do not run competing heavy
+benchmarks at the same time. Keep failed reports before rerunning the same profile;
+reports/load-smoke.json and reports/load-baseline.json are overwritten by new runs.
+
+PostgreSQL is limited to two CPU cores and 512 MiB RAM. The test-only pg driver uses
+up to 16 TCP connections, five-second connection/statement deadlines and parameter
+binding. Bulk fixture setup has a separate 90-second statement deadline and is
+excluded from measurements. This avoids measuring docker-exec process startup as
+SQL latency. Production continues using its existing Neon transport.
+
+## Data, traffic and targets
+
+The fixture applies the complete production migration journal and creates ten
+business fleets, 30 accounts, 50,000 assigned shipments, 5,000 pending write fixtures
+and 50,000 historical events. Timestamps span 30 days with ties. Production event
+triggers run during seeding; outbox rows are durable, but no workers dispatch them.
+SQL statistics are analyzed before measurement. This is a balanced tenant dataset,
+not evidence for highly skewed tenants or millions of rows.
+
+The deterministic operation mix is 70% shipment-list reads, 20% driver assignments
+with immediate same-key replay, and 10% denied cross-business assignment attempts.
+Reads rotate business/driver/customer roles across tenants and alternate first-page
+and cursor positions after five pages. Every response checks current scope and expected
+status; assignments must replay the identical snapshot. Lists contain 20 rows.
+Each assignment operation makes two HTTP requests, so offered operations/s and HTTP
+requests/s differ. At the intended mix, 20 operations/s means about 24 HTTP requests/s.
+
+| Phase    | Offered operations/s | Duration   | Purpose                                |
+| -------- | -------------------- | ---------- | -------------------------------------- |
+| warmup   | 10                   | 5 seconds  | Establish connections and initial work |
+| steady   | 20                   | 30 seconds | Repeatable initial baseline            |
+| burst    | 100                  | 15 seconds | Five times the steady arrival rate     |
+| recovery | 20                   | 15 seconds | Verify normal behavior after the burst |
+
+The smoke profile runs 10 operations/s for five seconds; it verifies the harness,
+not sustained capacity. Baseline offers 2,450 operations (about 2,940 HTTP requests).
+
+Thresholds are defined in code before execution. Normal read/denial p95 must stay
+at or below 500 ms; assignment plus replay p95 at or below 1,000 ms. Burst limits
+are 1,500 ms and 2,500 ms respectively. Every phase requires zero failed operations,
+zero dropped arrivals and complete arrival accounting. Each HTTP request has a
+five-second deadline. These are engineering starting targets for this loopback
+fixture, not published production SLOs. Do not raise limits just to obtain a pass.
+
+Arrivals follow a fixed schedule. The generator allows at most 64 in-flight
+operations and records drops instead of silently reducing offered load. Arrivals
+more than two scheduling intervals late are dropped rather than sent in a catch-up
+storm. Scheduling lag and drops can identify generator saturation too; a failed
+load run does not by itself establish the backend's bottleneck. The generator and
+API share one Node process, so their CPU/RSS/event-loop measurements are combined.
+The burst tests a specified offered rate; it is not a search for maximum capacity
+or proof of service behavior under arbitrary overload.
+
+## Evidence and interpretation
+
+JSON reports retain thresholds, workload, environment, timings (p50/p95/p99/max),
+completed throughput, failures/drops, peak in-flight work, generator lag, process
+CPU/RSS/event-loop delay, pool waiters, query plans with ANALYZE/BUFFERS, final
+PostgreSQL statistics and an end-of-run Docker resource snapshot. PostgreSQL
+counters include setup work; the Docker snapshot is not peak database utilization.
+Local commit is null; CI adds GITHUB_SHA. Reports never include JWTs or database
+credentials. Report checks also verify one shipment update, one event and one
+saved idempotency response per assignment, with no changes to foreign fixtures.
+
+A nonzero exit means setup, latency, arrival accounting, correctness or cleanup
+failed. Read the failures and query plans before changing production code. A short
+pass gives evidence only for that data/rate/duration/environment. Host resources,
+transport latency, ingress, production middleware and provider costs can change it.
+
+The manual `Backend load baseline` workflow runs on Ubuntu 24.04 with the same
+profiles and uploads backend-load-results for 14 days, including failed runs. It
+uses the existing allowed action tags, and adds no secrets. After the workflow is
+merged into the default branch, open Actions > Backend load baseline > Run workflow,
+choose the branch/profile, and inspect the report. It is deliberately separate
+from the required Backend CI checks and does not run on every push or PR.
+
+Next capacity work: actual staged Bun/Neon/ingress traffic, global middleware and
+abuse budgets, larger/skewed datasets, long soak runs, sustained queue consumers,
+GPS fan-out, pool exhaustion/dependency failures and measured recovery. Establish
+hosted workload targets and costs before claiming production capacity.
+
+## Executed baseline — 2026-11-05
+
+Windows/Node 24.12.0 on an eight-logical-CPU, approximately 16 GiB host; PostgreSQL
+limited to two CPUs/512 MiB. The complete baseline passed: 2,450 operations,
+2,940 HTTP requests, zero failed operations and zero dropped arrivals across all
+four phases. These are short loopback measurements, not internet response times.
+
+| Phase    | Completed operations | Worst read-role p95     | Assignment + replay p95 |
+| -------- | -------------------- | ----------------------- | ----------------------- |
+| warmup   | 50                   | 13.3 ms (business only) | 42.3 ms                 |
+| steady   | 600                  | 15.3 ms                 | 27.4 ms                 |
+| burst    | 1,500                | 117.6 ms                | 133.2 ms                |
+| recovery | 300                  | 23.4 ms                 | 21.1 ms                 |
+
+Post-run integrity found exactly 490 assigned shipments, 490 new events and 490
+saved command responses, with zero modified foreign shipments. Query-plan samples
+used shipments_business_page_idx, shipments_driver_active_page_idx,
+shipments_customer_page_idx and shipment_events_page_idx. Sample query execution
+was 0.859/3.172/3.227 ms for business/driver/customer. These measurements do not
+justify changing application indexes or queries, so no speculative tuning was made.
+
+Observed peak combined API/generator RSS was 206,958,592 bytes; sampled peak pool
+waiters was one and event-loop p99 was 34.9 ms. Evidence: reports/load-baseline.json.
+The successful smoke run completed 50 operations without failures/drops. Its initial
+attempt hit the request-oriented five-second timeout during bulk seeding; that
+failed report is preserved as reports/load-smoke-seed-timeout.json. Setup now has
+its own deadline without relaxing measured request deadlines or latency limits.
+The local reports have commit=null. The new manual workflow has not been run on
+GitHub. Hosted transport, longer runs, skewed data and maximum capacity remain open.

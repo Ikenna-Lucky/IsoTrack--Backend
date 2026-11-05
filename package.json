@@ -10,6 +10,7 @@
     "type-check": "tsc --noEmit",
     "test:unit": "node scripts/run-tests.mjs unit",
     "test:integration": "node scripts/run-tests.mjs integration",
+    "test:load": "node scripts/load-test.mjs",
     "recovery:drill": "node scripts/run-tests.mjs recovery",
     "delivery:status": "bun run src/db/delivery-operations.ts status",
     "delivery:purge": "bun run src/db/delivery-operations.ts purge",
@@ -59,6 +60,7 @@
     "drizzle-kit": "^0.30.4",
     "eslint": "^9.26.0",
     "globals": "17.4.0",
+    "pg": "8.23.1",
     "socket.io-client": "4.8.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "8.72.1"

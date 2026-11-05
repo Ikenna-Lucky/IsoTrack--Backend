@@ -137,3 +137,10 @@ References: [checkout manifest](https://raw.githubusercontent.com/actions/checko
 [setup-node manifest](https://raw.githubusercontent.com/actions/setup-node/v6/action.yml),
 [upload-artifact manifest](https://raw.githubusercontent.com/actions/upload-artifact/v6/action.yml),
 [runner image support](https://github.com/actions/runner-images).
+
+## Manual load baseline
+
+Backend load baseline (.github/workflows/performance.yml) is a separate manually
+triggered workflow. It runs a chosen isolated load profile and retains its JSON
+report for 14 days. It uses the same action allowlist as Backend CI. See
+performance.md; it is not an additional required merge check or a deployment.

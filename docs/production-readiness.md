@@ -29,7 +29,7 @@ deployed observability, load testing and hosted recovery evidence remain substan
 | Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding            |
 | Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
 | Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0014 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
-| Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Bounded shipment cursor lists and 10,000-row tied-timestamp seek plans verified locally; varied data, concurrency and capacity/overload remain unverified                                                                                                                                                                                                                                                                               |
+| Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Bounded cursor lists, seek plans and a 50,000-row/10-tenant local steady/burst/recovery baseline verified; 2,450 operations passed. Hosted transport, larger/skewed data, soak, workers and saturation remain unverified                                                                                                                                                                                                                                                                               |
 | Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Planned                                                                                                                                                                                                                                                                                  |
 | Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 64 fast and 191 complete integration cases passed on 2026-11-05; historical failed/interrupted reports retained; deployed receivers/log retention, local three-case PostgreSQL recovery verified; host monitoring and hosted restore/incident rehearsal outstanding |
 | Data lifecycle         | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules             | Planned                                                                                                                                                                                                                                                                                  |
@@ -1081,3 +1081,48 @@ existing inputs remain available. Application runtimes, test discovery, gates an
 artifact retention are unchanged. Repository allowed-action entries must include
 the new tags before pushing; no GitHub settings were edited here. New remote CI
 execution and warning cleanup remain unverified. Completion estimate stays 8.5/10.
+
+## 2026-11-05 — Repeatable load baseline
+
+PR-09/11/13/14: added a bounded fixed-arrival load generator, isolated PostgreSQL
+TCP fixture and manual Backend load baseline workflow. No application routes,
+indexes, migrations, frontend or deployed settings changed. The pg 8.23.1 development
+dependency avoids timing docker-exec startup as query latency. Actual production
+routers, JWT/session authentication and SQL execute against the migrated database;
+this is not a full production app/Neon/Bun measurement. No target URL is accepted.
+Database resources are capped at two CPUs/512 MiB and the pool at 16 connections.
+
+The ten-tenant fixture has 50,000 read shipments, 5,000 write fixtures and 50,000
+events with timestamps spanning 30 days. The 65-second baseline offers warmup,
+20 operations/s steady traffic, 100 operations/s burst and 20 operations/s recovery.
+Normal read/denial p95 limits are 500 ms and assignment+replay 1,000 ms; burst limits
+are 1,500/2,500 ms. Every phase requires zero failed/dropped operations. These targets
+were defined before execution and were not relaxed in response to results.
+
+Local Windows/Node 24.12.0 baseline passed all 2,450 operations (2,940 HTTP requests),
+zero failures/drops. Worst read-role p95: steady 15.3 ms, burst 117.6 ms, recovery
+23.4 ms. Assignment+replay p95: 27.4/133.2/21.1 ms. Durable integrity: 490 assignments,
+490 events, 490 saved responses and zero changes to foreign fixtures. Query-plan
+samples used the expected scope/event indexes. No measured bottleneck justified an
+application query/index change. Reports/load-baseline.json retains timings, scope,
+thresholds, plans, resource observations and integrity. Local commit is null.
+
+Initial smoke setup timed out while bulk seeding with the five-second request
+statement limit (reports/load-smoke-seed-timeout.json). Setup now has a 90-second
+limit outside measurements; request statements still have five seconds. The fixed
+smoke profile passed 50/50 operations. Lint, TypeScript, frozen dependency install
+and Bun build (945 modules, 3.56 MB) passed. Fast tests passed 66/66, including
+load-generator drop accounting, bounded concurrency and failing threshold behavior.
+The first lint invocation caught an unused fixture variable; it was removed and
+final lint passed. Full integration rerun is left to CI for this tooling-only change.
+
+The user reports completing remote CI, artifact review and branch protection through
+the PR step. This remains user-reported evidence without independently inspected
+run URLs/settings. The new optional performance workflow needs its own remote run;
+it reuses the existing action allowlist and needs no application secrets. No push,
+deployment, live migration, real provider traffic or recipient messages occurred.
+See docs/performance.md for reproduction, interpretation and remaining capacity work.
+
+Completion remains 8.5/10. Initial local performance evidence is now verified, but
+maximum capacity, hosted behavior, longer soak runs, heavily skewed/larger datasets,
+queue/GPS fan-out, dependency saturation and deployed recovery are not established.

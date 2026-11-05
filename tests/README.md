@@ -128,7 +128,7 @@ The shipment-page suite creates `isotrack-shipment-page-test-*` PostgreSQL and a
 ephemeral loopback HTTP server. It applies the migration journal and exercises
 all-role traversal, privacy, scope/filter validation, live-list changes and exact
 timestamp boundaries. A 10,000-row tied-timestamp batch checks deep seek plans;
-actual EXPLAIN ANALYZE JSON is retained in reports/shipment-page-plan-*.json.
+actual EXPLAIN ANALYZE JSON is retained in reports/shipment-page-plan-\*.json.
 The standard unit/integration discovery includes these cases. See
 docs/shipment-pagination.md for contract and workload limits.
 
@@ -153,3 +153,10 @@ held-package age. Tracking fixtures also apply the complete migration chain.
 CI partitions sorted integration files into three disjoint groups. Reproduce one
 with node scripts/run-tests.mjs integration 1/3 (or 2/3, 3/3). Each has separate
 validated reports. The ordinary integration command still runs the entire suite.
+
+## Load baseline
+
+Run npm run test:load -- smoke or -- baseline with Docker available. These are
+explicit performance runs outside automatic integration discovery. They use
+production HTTP/auth/SQL code with a test-only pooled PostgreSQL TCP adapter.
+See docs/performance.md for traffic, thresholds, evidence and limitations.
