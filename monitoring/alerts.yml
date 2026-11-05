@@ -66,3 +66,9 @@ groups:
         labels: { severity: warning }
         annotations:
           { summary: "API p95 response preparation exceeds two seconds" }
+      - alert: IsoTrackHeldPackageOverdue
+        expr: isotrack_backlog_oldest_seconds{queue="held_packages"} > 86400
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          { summary: "Failed delivery remains in driver custody for over a day" }

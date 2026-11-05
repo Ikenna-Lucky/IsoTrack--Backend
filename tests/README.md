@@ -140,3 +140,12 @@ SQL bypass, private fields, worker fencing, queue metrics and retention. The
 checkout suite now applies the complete schema including email/session invalidation
 and explicitly establishes fresh fixture sessions after changing email. Test mail
 never leaves the local SMTP sink. See docs/delivery-confirmation.md.
+
+## Failed delivery and return coverage
+
+shipment-exceptions.integration.mjs applies the full migration journal to disposable
+PostgreSQL, serving signed HTTP requests through production routers. It checks
+role/tenant denial, bounded retries, physical custody, return receipt, replay and
+concurrent commands, lost acknowledgements, rollback, private audit pagination,
+delivery-code revocation, driver lists, GPS ordering, outbox processing and
+held-package age. Tracking fixtures also apply the complete migration chain.

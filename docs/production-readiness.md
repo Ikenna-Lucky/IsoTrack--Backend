@@ -8,8 +8,8 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8/10** after recipient delivery confirmation, bounded lists and local operational checks
-(2026-11-04). Update this estimate after each
+Current completion estimate: **8/10** after failed-delivery/return implementation, recipient confirmation and local operational checks
+(2026-11-05). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
 critical journeys, identity/browser adoption, remaining write controls, provider sandbox/payment policy,
@@ -24,11 +24,11 @@ deployed observability, load testing and hosted recovery evidence remain substan
 | Private fleets         | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests           | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding                                                                                          |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; Command HTTP, write-race and fleet denial verified; full detail-route/hosted verification outstanding                                                                                                                                                 |
 | Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, guarded login/signup/recovery HTTP, atomic signup and credential races verified locally; full app/browser journeys, verified-email policy, hosting ingress, provider and deployed evidence outstanding                       |
-| Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/update/history/outbox/saved results are atomic; creation and command replay, workflow versions, races, stale cycles and lost acknowledgements verified locally; Recipient-code delivery proof verified locally; returns, physical/recipient trust policy, client/hosted adoption and capacity outstanding                                                                                            |
+| Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/update/history/outbox/saved results are atomic; creation and command replay, workflow versions, races, stale cycles and lost acknowledgements verified locally; Recipient-code delivery proof and failed-delivery/return custody verified locally; physical/recipient trust policy, client/hosted adoption and capacity outstanding                                                                                            |
 | Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Shipment checkout guards, reconciliation, single applied receipts, additional-money review and verified full-refund resolution pass local SQL/HTTP/fault tests; actual Stripe sandbox, partial/applied refunds, disputes, abuse budgets and deployed operations outstanding |
 | Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding            |
 | Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
-| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0013 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
+| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0014 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
 | Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Bounded shipment cursor lists and 10,000-row tied-timestamp seek plans verified locally; varied data, concurrency and capacity/overload remain unverified                                                                                                                                                                                                                                                                               |
 | Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Planned                                                                                                                                                                                                                                                                                  |
 | Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 62 fast and 75 focused integration cases passed; latest complete backend run interrupted, failed reports retained; deployed receivers/log retention, local three-case PostgreSQL recovery verified; host monitoring and hosted restore/incident rehearsal outstanding |
@@ -941,3 +941,45 @@ hosted Neon/Bun/ingress, complete stable regression/CI, migration-scale locks,
 restore reconciliation, returns and capacity remain gates. No frontend edit,
 configured database migration, real recipient email or deployment occurred.
 Completion remains **8/10**; production readiness is unverified.
+
+## 2026-11-05 — Failed deliveries and returns
+
+Implemented migration 0014, structured failure reasons, three-attempt retries,
+private version-paginated exception history and owner/driver return commands.
+Post-pickup custody cannot be cleared until business receipt; retry retains driver,
+pickup time and ordered GPS. Receipt is terminal. Commands atomically revoke old
+delivery codes and save history, notifications and idempotent responses. Existing
+payment fields are unchanged. Held packages remain on driver worklists and expose
+an indexed age metric with a 24-hour/ten-minute Prometheus warning. See
+shipment-exceptions.md for contracts, trust assumptions and rollout.
+
+Local evidence uses Windows/Node 24.12.0, disposable PostgreSQL, signed HTTP,
+production migration/command/query code, fault injection and local monitoring
+containers. The first broad selected run passed 68/70 cases in 302.159 seconds
+(reports/shipment-exceptions-before-recheck.xml, also shipment-exceptions-final.xml).
+It failed a restore history validation because migration 0014 was edited during
+the run; migration files were frozen before recheck. An older command fixture also
+attempted to erase custody directly. It now asserts that denial and completes a
+business-controlled return before removing assignment and testing replay access.
+
+The affected 30-case recheck passed 29 in 189.799 seconds: all eight migration,
+three recovery and ten exception cases passed. One command assertion was accidentally
+changed from version three to six while editing the custody fixture; the database
+correctly returned three. The assertion is corrected. That failed report remains
+reports/shipment-exceptions-recheck.xml; a separate final command rerun records
+the corrected result: all nine passed in 64.454 seconds, zero failures/skips/todos
+or cancellations (reports/shipment-commands-exceptions-final.xml). Across the
+focused runs, all 70 distinct selected integration cases have a passing result.
+The broad run also passed all 13 delivery, seven pagination,
+14 tracking and six observability cases, including actual local alert firing and
+recovery. These are focused results, not a clean full-backend/remote CI run.
+
+Migration 0014 is additive but its transactional index builds need representative
+lock/duration/disk rehearsal. Reconcile legacy attempt counts and custody before
+launch. No frontend change, configured-database migration, external mail or
+deployment occurred. Hosted Neon/Bun behavior, client journeys, real providers,
+complete CI, capacity, data lifecycle and deployed operations remain release gates.
+Completion remains **8/10**; production readiness is unverified.
+
+Final static checks passed: lint, TypeScript, 62/62 fast tests (7.238 seconds)
+and Bun build (945 modules, 3.56 MB). Reports/unit.xml/.json retain fast evidence.

@@ -43,7 +43,7 @@ export function recordSocketLocationStatement(
       and a.id=${identity.sessionId} and a.user_id=u.id and a.revoked_at is null
       and a.credential_version=u.credential_version and a.expires_at>statement_timestamp()
       and ${identity.expiresAt} > extract(epoch from statement_timestamp())
-      and s.status in ('assigned','picked_up','in_transit','out_for_delivery')
+      and (s.status in ('assigned','picked_up','in_transit','out_for_delivery') or (s.status='failed' and s.return_state='in_transit'))
       and ${location.timestamp} >= extract(epoch from statement_timestamp())*1000-30000
       and ${location.timestamp} <= extract(epoch from statement_timestamp())*1000+5000
       and (case when jsonb_typeof(s.current_location->'receivedAt')='number'

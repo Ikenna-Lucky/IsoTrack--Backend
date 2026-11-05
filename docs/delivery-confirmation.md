@@ -126,3 +126,6 @@ authorization, direct SQL bypass, rollback, resend, SMTP exhaustion/lease recove
 secret rotation, private fields, metrics and retention. This is not evidence of
 Gmail inbox delivery, deployed Bun/Neon behavior or physical receipt. See the
 readiness register for actual run results, incomplete runs and remaining gates.
+
+Failure, retry and return commands revoke outstanding delivery codes atomically.
+A retried delivery requires a fresh code; see shipment-exceptions.md.

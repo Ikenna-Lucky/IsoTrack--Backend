@@ -5,9 +5,25 @@ tests:
     input_series:
       - series: 'isotrack_backlog_present{queue="payment_reviews"}'
         values: "1 1 0 0"
+      - series: 'isotrack_backlog_oldest_seconds{queue="held_packages"}'
+        values: "90001 90001 90001 90001 90001 90001 90001 90001 90001 90001 90001 0 0"
       - series: 'isotrack_payment_reconciliation_total{outcome="error"}'
         values: "0+1x20"
     alert_rule_test:
+      - eval_time: 0m
+        alertname: IsoTrackHeldPackageOverdue
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: IsoTrackHeldPackageOverdue
+        exp_alerts:
+          - exp_labels: { queue: held_packages, severity: warning }
+            exp_annotations:
+              {
+                summary: "Failed delivery remains in driver custody for over a day",
+              }
+      - eval_time: 12m
+        alertname: IsoTrackHeldPackageOverdue
+        exp_alerts: []
       - eval_time: 0m
         alertname: IsoTrackPaymentReview
         exp_alerts: []

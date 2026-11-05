@@ -42,7 +42,7 @@ export const idempotencyRequests = pgTable(
       .where(sql`${t.scrubbedAt} is null`),
     check(
       "idempotency_requests_operation_check",
-      sql`${t.operation} in ('shipments.create','payments.initialize','shipments.update','delivery.issue','delivery.confirm')`,
+      sql`${t.operation} in ('shipments.create','payments.initialize','shipments.update','delivery.issue','delivery.confirm','shipments.exception')`,
     ),
     check(
       "idempotency_requests_state_check",

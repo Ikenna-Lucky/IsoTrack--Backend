@@ -29,6 +29,10 @@ const contextSchema = z.object({
       "failed",
       "cancelled",
       "paid",
+      "delivery_retry",
+      "return_requested",
+      "return_in_transit",
+      "return_received",
     ]),
     amountKobo: z.number().int().nonnegative(),
   }),
@@ -51,6 +55,10 @@ const titles: Record<string, string> = {
   failed: "Delivery failed",
   cancelled: "Shipment cancelled",
   paid: "Payment confirmed",
+  delivery_retry: "Another delivery attempt authorized",
+  return_requested: "Return to business requested",
+  return_in_transit: "Package returning to business",
+  return_received: "Business received returned package",
 };
 
 export function outboxJobId(id: string): string {

@@ -26,4 +26,6 @@ export const backlogStatement =
     select lease_until from delivery_confirmations where delivery_state='processing' order by lease_until limit 1) d
   union all select 'payment_reviews',min(received_at) from (
     select received_at from payments where review_reason is not null and refund_id is null order by received_at limit 1) p
+  union all select 'held_packages',min(failed_at) from (
+    select coalesce(failed_at,created_at) as failed_at from shipments where status='failed' and actual_pickup is not null and return_state<>'received' order by coalesce(failed_at,created_at) limit 1) s
 ) backlog`;

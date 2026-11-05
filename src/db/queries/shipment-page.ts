@@ -12,7 +12,7 @@ export function shipmentPageStatement(
       : actor.role === "driver"
         ? sql`s.driver_id=(select id from drivers where user_id=${actor.userId})
         and s.business_id=(select business_id from drivers where user_id=${actor.userId})
-        ${page.includeCompleted ? sql`` : sql`and s.status not in ('delivered','failed','cancelled')`}`
+        ${page.includeCompleted ? sql`` : sql`and (s.status not in ('delivered','failed','cancelled') or (s.status='failed' and s.actual_pickup is not null and s.return_state<>'received'))`}`
         : actor.role === "customer"
           ? sql`s.customer_id=${actor.userId}`
           : sql`false`;

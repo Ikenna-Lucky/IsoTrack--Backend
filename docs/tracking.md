@@ -136,3 +136,9 @@ The connection/authentication design uses Socket.IO's official
 [middleware](https://socket.io/docs/v4/middlewares/),
 [server-options](https://socket.io/docs/v4/server-options/) and
 [client API](https://socket.io/docs/v4/client-api/) contracts.
+
+## Return journeys
+
+Failed shipments accept assigned-driver GPS only while return_state is in_transit.
+Business receipt stops writes. Same-driver retries preserve the latest sample and
+its ordering boundary. Existing authentication, fleet and rate controls apply.

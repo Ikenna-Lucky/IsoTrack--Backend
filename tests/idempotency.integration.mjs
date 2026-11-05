@@ -78,6 +78,7 @@ before(async () => {
     "0011_shipment_commands",
     "0012_shipment_pagination",
     "0013_delivery_confirmation",
+    "0014_shipment_exceptions",
   ]) {
     await postgres.query(
       sql.raw(

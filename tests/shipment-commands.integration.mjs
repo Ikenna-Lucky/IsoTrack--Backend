@@ -10,6 +10,7 @@ import { sql } from "drizzle-orm";
 import { postgresFixture } from "./helpers/postgres.mjs";
 import { runMigrations } from "../src/db/migration-runner.ts";
 import { createShipmentCommandRouter } from "../src/routes/shipment-commands.ts";
+import { createShipmentExceptionRouter } from "../src/routes/shipment-exceptions.ts";
 import { createAuthenticationMiddleware } from "../src/middleware/authentication.ts";
 import { verifySessionToken } from "../src/lib/token-verification.ts";
 import { activeSessionStatement } from "../src/db/queries/session-statements.ts";
@@ -104,6 +105,7 @@ before(async () => {
       },
     }),
   );
+  app.route("/shipments", createShipmentExceptionRouter(store));
   server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 });
   if (!server.listening) await once(server, "listening");
   base = `http://127.0.0.1:${server.address().port}`;
@@ -234,21 +236,33 @@ test("cycling status cannot revive a stale command and historical replay stays a
   const original = await (await assign()).json();
   assert.equal(
     (
-      await send(
-        "status",
-        { expectedVersion: 1, status: "failed" },
-        key("fail"),
-      )
+      await fetch(`${base}/shipments/shipment/exceptions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokens.get("owner")}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": key("fail"),
+        },
+        body: JSON.stringify({
+          action: "fail",
+          expectedVersion: 1,
+          reason: "vehicle_issue",
+        }),
+      })
     ).status,
     200,
   );
   assert.equal(
     (
-      await send(
-        "status",
-        { expectedVersion: 2, status: "pending" },
-        key("retry"),
-      )
+      await fetch(`${base}/shipments/shipment/exceptions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokens.get("owner")}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": key("retry"),
+        },
+        body: JSON.stringify({ action: "retry", expectedVersion: 2 }),
+      })
     ).status,
     200,
   );
@@ -304,12 +318,36 @@ test("assigned drivers can progress but cannot retry/cancel, and replay checks c
     (await send("status", input, key("driver-pickup"), "rider")).status,
     200,
   );
+  await assert.rejects(
+    query("update shipments set driver_id=null where id='shipment'"),
+    /Package custody must be preserved/,
+  );
+  for (const [index, action] of [
+    "fail",
+    "return_request",
+    "return_receive",
+  ].entries()) {
+    const response = await fetch(`${base}/shipments/shipment/exceptions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tokens.get("owner")}`,
+        "Idempotency-Key": key(`custody-${action}`),
+      },
+      body: JSON.stringify({
+        action,
+        expectedVersion: index + 2,
+        ...(action === "fail" ? { reason: "vehicle_issue" } : {}),
+      }),
+    });
+    assert.equal(response.status, 200, await response.text());
+  }
   await query("update shipments set driver_id=null where id='shipment'");
   assert.equal(
     (await send("status", input, key("driver-pickup"), "rider")).status,
     404,
   );
-  assert.equal((await state()).version, 3);
+  assert.equal((await state()).version, 6);
 });
 test("expired keys stay tombstones and unrelated GPS/payment changes preserve command version", async () => {
   assert.equal((await assign()).status, 200);

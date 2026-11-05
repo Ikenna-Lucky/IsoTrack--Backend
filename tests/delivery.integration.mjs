@@ -386,7 +386,7 @@ test("expired, revoked and stale-version codes cannot complete a delivery", asyn
   await query("update delivery_confirmations set revoked_at=now()");
   assert.equal((await confirm(d, undefined, "revoked")).status, 409);
   await pg.query(
-    sql`update delivery_confirmations set revoked_at=null where id=${d.challengeId}; update shipments set status='failed'`,
+    sql`update delivery_confirmations set revoked_at=null where id=${d.challengeId}; update shipments set status='failed',failure_reason='vehicle_issue',failed_at=now()`,
   );
   assert.equal((await confirm(d, undefined, "stale")).status, 409);
 });

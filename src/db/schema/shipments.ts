@@ -26,6 +26,11 @@ export const shipments = pgTable(
     status: shipmentStatusEnum("status").default("pending").notNull(),
     version: integer("version").default(0).notNull(),
     recipientEmail: text("recipient_email"),
+    failureReason: text("failure_reason"),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    attemptNumber: integer("attempt_number").notNull().default(1),
+    returnState: text("return_state").notNull().default("none"),
+    returnedAt: timestamp("returned_at", { withTimezone: true }),
 
     // Parties
     businessId: text("business_id")
@@ -67,6 +72,26 @@ export const shipments = pgTable(
   },
   (t) => [
     check("shipments_version_check", sql`${t.version} >= 0`),
+    check(
+      "shipments_attempt_number_check",
+      sql`${t.attemptNumber} between 1 and 3`,
+    ),
+    check(
+      "shipments_return_state_check",
+      sql`${t.returnState} in ('none','requested','in_transit','received')`,
+    ),
+    check(
+      "shipments_failure_reason_check",
+      sql`${t.failureReason} is null or ${t.failureReason} in ('recipient_unavailable','recipient_refused','address_incorrect','recipient_code_unavailable','package_damaged','vehicle_issue','other')`,
+    ),
+    check(
+      "shipments_return_custody_check",
+      sql`${t.returnState}='none' or (${t.status}='failed' and ${t.actualPickup} is not null)`,
+    ),
+    check(
+      "shipments_return_receipt_check",
+      sql`(${t.returnState}='received')=(${t.returnedAt} is not null)`,
+    ),
     foreignKey({
       name: "shipments_driver_business_fk",
       columns: [t.driverId, t.businessId],
@@ -78,6 +103,11 @@ export const shipments = pgTable(
     index("shipments_customer_id_idx").on(t.customerId),
     index("shipments_status_idx").on(t.status),
     index("shipments_created_at_idx").on(t.createdAt),
+    index("shipments_held_packages_idx")
+      .on(sql`coalesce(${t.failedAt},${t.createdAt})`)
+      .where(
+        sql`${t.status}='failed' and ${t.actualPickup} is not null and ${t.returnState}<>'received'`,
+      ),
     index("shipments_business_page_idx").on(
       t.businessId,
       t.createdAt.desc(),
@@ -101,7 +131,9 @@ export const shipments = pgTable(
         t.createdAt.desc(),
         sql`${t.id} collate "C" desc`,
       )
-      .where(sql`${t.status} not in ('delivered','failed','cancelled')`),
+      .where(
+        sql`${t.status} not in ('delivered','failed','cancelled') or (${t.status}='failed' and ${t.actualPickup} is not null and ${t.returnState}<>'received')`,
+      ),
   ],
 );
 

@@ -7,7 +7,7 @@ No production monitor or external notification destination was deployed.
 
 ## Rollout and configuration
 
-Apply the full migration journal through `0013_delivery_confirmation` before
+Apply the full migration journal through `0014_shipment_exceptions` before
 starting this version. Operational and delivery indexes support oldest-work,
 dead-letter and unresolved payment review probes. Ordinary transactional index creation takes
 table locks: rehearse lock duration on representative data and schedule the
@@ -192,3 +192,8 @@ References: [Prometheus client](https://github.com/prometheus/client_js),
 [exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/),
 [alert rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/),
 [rule testing](https://prometheus.io/docs/prometheus/latest/configuration/unit_testing_rules/).
+
+Failed deliveries in custody contribute to the indexed held_packages backlog.
+IsoTrackHeldPackageOverdue warns after 24 hours plus ten minutes pending.
+Age uses failed_at, or conservatively created_at for legacy rows; GPS does not reset it.
+See shipment-exceptions.md for reconciliation and return operations.

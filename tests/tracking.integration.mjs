@@ -55,6 +55,15 @@ before(async () => {
     "0003_driver_invitations",
     "0004_stripe_checkout",
     "0005_auth_sessions",
+    "0006_notification_outbox",
+    "0007_request_idempotency",
+    "0008_account_actions",
+    "0009_payment_lifecycle",
+    "0010_operational_indexes",
+    "0011_shipment_commands",
+    "0012_shipment_pagination",
+    "0013_delivery_confirmation",
+    "0014_shipment_exceptions",
   ]) {
     await postgres.query(
       sql.raw(
@@ -425,7 +434,7 @@ test("simultaneous locations across sessions accept one write and preserve monot
     "",
   );
   await postgres.query(
-    sql`update shipments set status='delivered' where id=${shipment.id}`,
+    sql`update shipments set status='cancelled' where id=${shipment.id}`,
   );
   assert.equal(
     await postgres.query(

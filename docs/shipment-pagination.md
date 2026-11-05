@@ -17,7 +17,9 @@ nextCursor } }`. There is no total/count, page number, totalPages or arbitrary
 page jump. Missing profiles or no matching shipments produce an empty successful
 page. Results are not cached (`Cache-Control: no-store`). Drivers can opt into
 terminal history using `includeCompleted=true`; their default excludes delivered,
-failed and cancelled shipments. Other roles cannot supply this filter.
+and cancelled shipments, and failed shipments whose packages are not in custody.
+Failed packages held by the driver remain visible until return receipt (migration
+0014). Other roles cannot supply this filter.
 
 Limits must be decimal integers 1–50. Unknown parameters (including legacy
 `page`/`pageSize`), duplicates, malformed/oversized cursors and invalid filter values

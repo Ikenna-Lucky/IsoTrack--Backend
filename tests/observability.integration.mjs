@@ -241,7 +241,11 @@ test("backlog metrics read durable delayed work, dead letters, expired leases an
   const rows = (await metrics.snapshots.get()).values;
   assert.ok(
     rows
-      .filter((row) => !row.labels.queue.startsWith("delivery_"))
+      .filter(
+        (row) =>
+          !row.labels.queue.startsWith("delivery_") &&
+          row.labels.queue !== "held_packages",
+      )
       .every((row) => row.value >= 590),
   );
   await query("truncate payments,notification_outbox,account_actions cascade");

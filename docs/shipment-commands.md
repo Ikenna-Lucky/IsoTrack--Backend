@@ -97,3 +97,9 @@ driver permissions/current-access replay, expiry and version scope. The complete
 integration suite checks compatibility with existing boundaries. Hosted Neon,
 the full Bun entrypoint, browser adoption, actual proxy behavior and load remain
 separate release gates. See the readiness register for execution results.
+
+## Failed deliveries and returns
+
+New failed/pending status commands use the exception endpoint described in
+shipment-exceptions.md. Database custody guards prevent removing a picked-up
+package's driver or cancelling it until the business confirms return receipt.
