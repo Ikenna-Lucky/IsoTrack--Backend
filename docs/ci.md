@@ -116,3 +116,24 @@ three-group GitHub matrix remains unverified remotely.
 Monitoring fixtures grant read/traverse access to synthetic configs for non-root
 container users while keeping mounts read-only. Startup failures retain bounded
 container diagnostics in the affected integration artifact under monitoring-*-diagnostic.json.
+
+## CI runtime maintenance — 2026-11-05
+
+The workflow uses `actions/checkout@v6`, `actions/setup-node@v6` and
+`actions/upload-artifact@v6`, whose action manifests use Node 24. Jobs select
+`ubuntu-24.04` explicitly instead of the moving ubuntu-latest label. This fixes the
+reported action-runtime deprecations and avoids the announced latest-image major
+version transition. The runner image still receives updates; this is not an immutable
+image pin. Application Node 24.12.0 and Bun 1.3.12 versions remain unchanged.
+
+Before pushing this update, add the new action tags to Settings > Actions > General:
+`actions/checkout@v6, actions/setup-node@v6, actions/upload-artifact@v6, oven-sh/setup-bun@v2`.
+Keep the old v4 entries too if other active branches still use them. Update the
+allowlist before triggering the new workflow. Read-only workflow permissions remain.
+Remote execution, artifact delivery and absence of these annotations must be checked
+on the new commit; local formatting cannot establish those results.
+
+References: [checkout manifest](https://raw.githubusercontent.com/actions/checkout/v6/action.yml),
+[setup-node manifest](https://raw.githubusercontent.com/actions/setup-node/v6/action.yml),
+[upload-artifact manifest](https://raw.githubusercontent.com/actions/upload-artifact/v6/action.yml),
+[runner image support](https://github.com/actions/runner-images).

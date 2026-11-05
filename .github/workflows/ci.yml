@@ -15,11 +15,11 @@ concurrency:
 
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: "24.12.0"
       - uses: oven-sh/setup-bun@v2
@@ -38,7 +38,7 @@ jobs:
         run: bun run test:unit
       - name: Retain fast test results
         if: ${{ always() && steps.unit.outcome != 'skipped' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: backend-unit-results
           path: reports/unit.*
@@ -47,15 +47,15 @@ jobs:
 
   integration:
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: "24.12.0"
       - uses: oven-sh/setup-bun@v2
@@ -74,7 +74,7 @@ jobs:
         run: node scripts/run-tests.mjs integration ${{ matrix.shard }}/3
       - name: Retain integration results
         if: ${{ always() && steps.integration.outcome != 'skipped' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: backend-integration-${{ matrix.shard }}-of-3
           path: |
@@ -86,7 +86,7 @@ jobs:
   checks:
     needs: [quality, integration]
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: Require every backend job to pass

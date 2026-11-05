@@ -1068,3 +1068,16 @@ code, migration history, test assertions and action versions are unchanged; exis
 action allowlist entries still apply. Node-action deprecation warnings remain a
 separate maintenance item. No new full regression was needed for this fixture-only
 change. Updated remote CI success is pending; completion estimate remains 8.5/10.
+
+## 2026-11-05 — CI action runtime cleanup
+
+The user reports no errors after the monitoring-fixture fix. This is user-reported
+remote success; the run URL, commit, artifacts and protection settings have not
+been independently inspected through the connector.
+
+CI now selects Ubuntu 24.04 and Node-24 action majors for checkout, setup-node and
+upload-artifact (v6). Their official tagged manifests were inspected before editing;
+existing inputs remain available. Application runtimes, test discovery, gates and
+artifact retention are unchanged. Repository allowed-action entries must include
+the new tags before pushing; no GitHub settings were edited here. New remote CI
+execution and warning cleanup remain unverified. Completion estimate stays 8.5/10.
