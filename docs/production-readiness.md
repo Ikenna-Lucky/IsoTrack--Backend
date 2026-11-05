@@ -8,7 +8,7 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8/10** after failed-delivery/return implementation, recipient confirmation and local operational checks
+Current completion estimate: **8.5/10** after a complete local backend regression and CI grouping
 (2026-11-05). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
@@ -19,7 +19,7 @@ deployed observability, load testing and hosted recovery evidence remain substan
 
 | Workstream             | Acceptance criteria                                                                                                 | Current status                                                                                                                                                                                                                                                                           |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports          | Lint/types/build, report validation, PostgreSQL/Redis/BullMQ/Socket.IO/local SMTP suites pass locally; earlier clean Windows install recorded; GitHub/Linux verification and repository merge rules outstanding                                                                          |
+| Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports          | Complete local regression: 191 integration and 64 fast cases pass, lint/types/build pass; CI has three disjoint integration groups, independent reports and a final gate; GitHub/Linux execution and repository merge rules remain unverified                                                                          |
 | Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | List contact/driver projection verified through HTTP/PostgreSQL; detail and analytics boundaries still require dedicated integration evidence                                                                                                                                                                                                                                     |
 | Private fleets         | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests           | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding                                                                                          |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; Command HTTP, write-race and fleet denial verified; full detail-route/hosted verification outstanding                                                                                                                                                 |
@@ -31,7 +31,7 @@ deployed observability, load testing and hosted recovery evidence remain substan
 | Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0014 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
 | Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Bounded shipment cursor lists and 10,000-row tied-timestamp seek plans verified locally; varied data, concurrency and capacity/overload remain unverified                                                                                                                                                                                                                                                                               |
 | Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Planned                                                                                                                                                                                                                                                                                  |
-| Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 62 fast and 75 focused integration cases passed; latest complete backend run interrupted, failed reports retained; deployed receivers/log retention, local three-case PostgreSQL recovery verified; host monitoring and hosted restore/incident rehearsal outstanding |
+| Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 64 fast and 191 complete integration cases passed on 2026-11-05; historical failed/interrupted reports retained; deployed receivers/log retention, local three-case PostgreSQL recovery verified; host monitoring and hosted restore/incident rehearsal outstanding |
 | Data lifecycle         | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules             | Planned                                                                                                                                                                                                                                                                                  |
 
 ## Evidence policy
@@ -983,3 +983,56 @@ Completion remains **8/10**; production readiness is unverified.
 
 Final static checks passed: lint, TypeScript, 62/62 fast tests (7.238 seconds)
 and Bun build (945 modules, 3.56 MB). Reports/unit.xml/.json retain fast evidence.
+
+## 2026-11-05 — Complete backend regression and CI gates
+
+PR-09/11/14/15/17/18/19: complete local integration execution passed **191/191**
+in 758.923 seconds, with zero failures, cancellations, skips or todos. Command:
+`npm run test:integration`; validated `reports/integration.xml` and `.json` cover
+all 13 discovered integration files. Runtime: Windows, Node 24.12.0, disposable
+PostgreSQL 17/Redis 7, local SMTP/HTTP/Socket.IO and Prometheus/Alertmanager.
+Coverage includes migration 0000–0014 installation/upgrade/history/rollback/races,
+restore with the source unavailable, tenant denial, invitation/session races,
+payment replay/reconciliation, queue recovery, alert delivery, delivery proof,
+returns, pagination and authenticated GPS. Stripe failure cases use a local fixture;
+this is not real Stripe sandbox verification or hosted Neon transport evidence.
+
+The complete run began against application commit
+`0a6a710e0c12f9df0a80b699df6a1277dfb01eef`; report commit is null because this is a
+local execution. CI tooling changed during the run, without modifying application
+code, migrations or integration fixtures. The ungrouped run used the runner loaded
+at startup. Current working-tree tooling is covered separately by fast checks and
+a grouped runner smoke check. Do not attribute these local reports to a remote
+Actions run or a future commit. Earlier failed/incomplete canonical reports were
+copied to timestamped `reports/integration-before-regression-*` before execution.
+
+CI now separates quality from three integration groups. Deterministic file
+partitioning covers every integration file exactly once, auto-includes new files,
+rejects invalid groups and keeps report names independent. Matrix failure does not
+cancel siblings; reports are uploaded after test failures. Final `checks` runs
+regardless of dependency outcome and fails unless quality and all integration
+groups succeed. No assertion retry, skip or reduced coverage was introduced.
+Fast tests passed **64/64** in 3.735 seconds, including group coverage and invalid
+configuration cases. Lint, TypeScript, workflow/runner formatting and Bun build
+(945 modules, 3.56 MB) passed. Reports remain local/ignored until CI uploads its
+own artifacts. See docs/ci.md for group reproduction and required check settings.
+
+GitHub connector lookup for the current commit returned 404. Remote access and the
+updated workflow's Linux execution remain unverified; nothing was pushed or
+deployed and repository protection settings were not changed. The next remote
+gate is a green Backend CI run for the pushed commit with all four test artifacts,
+then repository rules requiring `checks`. No live database or recipient was used.
+
+Completion estimate advances to **8.5/10**, a planning judgment rather than a
+capacity measurement. Remaining release gates include remote CI, frontend/client
+journeys, real provider sandboxes, hosted runtime/ingress and recovery, data lifecycle
+controls and representative load/overload testing. Production readiness remains
+unverified; the full local pass does not establish support for millions of users.
+
+The current grouped runner was also exercised with
+`node scripts/run-tests.mjs integration 9/13`: all **53/53** ownership, invitation,
+payment and session cases passed in 77.690 seconds, zero skips/todos/cancellations.
+Validated `reports/integration-9-of-13.xml` and `.json` identify exactly
+`tests/shipment-access.integration.mjs` and shard 9/13, independently of the complete
+run's reports. This smoke run checks the new execution/report path; it is not an
+additional 53 distinct cases and does not establish the three remote matrix runs.

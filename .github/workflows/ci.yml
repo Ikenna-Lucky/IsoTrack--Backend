@@ -14,17 +14,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  checks:
+  quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '24.12.0'
+          node-version: "24.12.0"
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.3.12'
+          bun-version: "1.3.12"
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
       - name: Lint
@@ -32,28 +32,65 @@ jobs:
       - name: Check types
         run: bun run type-check
       - name: Build
-        id: build
         run: bun run build
       - name: Unit and HTTP handler tests
         id: unit
         run: bun run test:unit
+      - name: Retain fast test results
+        if: ${{ always() && steps.unit.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-unit-results
+          path: reports/unit.*
+          if-no-files-found: error
+          retention-days: 14
+
+  integration:
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.12.0"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.12"
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
       - name: Prepare integration service images
-        id: integration_services
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           docker pull postgres:17-alpine
           docker pull redis:7-alpine
           docker pull quay.io/prometheus/prometheus:v3.13.5
           docker pull quay.io/prometheus/alertmanager:v0.34.2
-      - name: Database, queue and real-time integration tests
+      - name: Database, queue, recovery and real-time integration tests
         id: integration
-        if: ${{ !cancelled() && steps.integration_services.outcome == 'success' }}
-        run: bun run test:integration
-      - name: Retain test results
-        if: ${{ always() && steps.unit.outcome != 'skipped' }}
+        run: node scripts/run-tests.mjs integration ${{ matrix.shard }}/3
+      - name: Retain integration results
+        if: ${{ always() && steps.integration.outcome != 'skipped' }}
         uses: actions/upload-artifact@v4
         with:
-          name: backend-test-results
-          path: reports/
+          name: backend-integration-${{ matrix.shard }}-of-3
+          path: reports/integration-${{ matrix.shard }}-of-3.*
           if-no-files-found: error
           retention-days: 14
+
+  checks:
+    needs: [quality, integration]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every backend job to pass
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+        run: |
+          test "$QUALITY_RESULT" = success
+          test "$INTEGRATION_RESULT" = success

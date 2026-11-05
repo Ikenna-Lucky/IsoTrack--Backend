@@ -9,8 +9,14 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { requirePassingReport } from "./test-report.mjs";
+import { integrationShard } from "./test-plan.mjs";
 
 const suite = process.argv[2];
+if (
+  process.argv.length > 4 ||
+  (process.argv[3] !== undefined && suite !== "integration")
+)
+  throw new Error("Only integration accepts an optional index/total shard");
 if (!["unit", "integration", "recovery"].includes(suite))
   throw new Error("Expected unit, integration or recovery suite");
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -24,8 +30,12 @@ const files = readdirSync(resolve(root, "tests"))
   .sort()
   .map((file) => resolve(root, "tests", file));
 if (!files.length) throw new Error(`No ${suite} test files discovered`);
+const plan =
+  suite === "integration"
+    ? integrationShard(files, process.argv[3])
+    : { files, shard: null, reportName: suite };
 mkdirSync(resolve(root, "reports"), { recursive: true });
-const report = resolve(root, "reports", `${suite}.xml`);
+const report = resolve(root, "reports", `${plan.reportName}.xml`);
 rmSync(report, { force: true });
 const startedAt = new Date().toISOString();
 const result = spawnSync(
@@ -39,7 +49,7 @@ const result = spawnSync(
     "--test-reporter=junit",
     "--test-reporter-destination=stdout",
     `--test-reporter-destination=${report}`,
-    ...files,
+    ...plan.files,
   ],
   {
     cwd: root,
@@ -57,16 +67,17 @@ try {
 }
 const passed = result.status === 0 && !result.error && !reportError;
 writeFileSync(
-  resolve(root, "reports", `${suite}.json`),
+  resolve(root, "reports", `${plan.reportName}.json`),
   JSON.stringify(
     {
       suite,
+      shard: plan.shard,
       startedAt,
       finishedAt: new Date().toISOString(),
       node: process.version,
       platform: process.platform,
       commit: process.env.GITHUB_SHA ?? null,
-      files: files.map((file) => file.slice(root.length)),
+      files: plan.files.map((file) => file.slice(root.length)),
       counts,
       passed,
       exitStatus: result.status,

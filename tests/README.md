@@ -149,3 +149,7 @@ role/tenant denial, bounded retries, physical custody, return receipt, replay an
 concurrent commands, lost acknowledgements, rollback, private audit pagination,
 delivery-code revocation, driver lists, GPS ordering, outbox processing and
 held-package age. Tracking fixtures also apply the complete migration chain.
+
+CI partitions sorted integration files into three disjoint groups. Reproduce one
+with node scripts/run-tests.mjs integration 1/3 (or 2/3, 3/3). Each has separate
+validated reports. The ordinary integration command still runs the entire suite.
