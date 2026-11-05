@@ -71,4 +71,18 @@ groups:
         for: 10m
         labels: { severity: warning }
         annotations:
-          { summary: "Failed delivery remains in driver custody for over a day" }
+          {
+            summary: "Failed delivery remains in driver custody for over a day",
+          }
+      - alert: IsoTrackRetentionOverdue
+        expr: max(isotrack_backlog_oldest_seconds{queue="retention"}) > 7200 and on() max(isotrack_retention_enabled) == 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          { summary: "Enabled cleanup has an overdue task checkpoint" }
+      - alert: IsoTrackRetentionFailures
+        expr: sum(increase(isotrack_retention_runs_total{status="error"}[1h])) > 0
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          { summary: "A cleanup batch failed; inspect retention status" }

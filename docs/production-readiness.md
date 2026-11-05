@@ -8,7 +8,7 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8.5/10** after a complete local backend regression and CI grouping
+Current completion estimate: **8.5/10** after local regression, performance baselines and opt-in retention checks
 (2026-11-05). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
@@ -28,11 +28,11 @@ deployed observability, load testing and hosted recovery evidence remain substan
 | Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Shipment checkout guards, reconciliation, single applied receipts, additional-money review and verified full-refund resolution pass local SQL/HTTP/fault tests; actual Stripe sandbox, partial/applied refunds, disputes, abuse budgets and deployed operations outstanding |
 | Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; frontend adoption, distributed adapter/budgets, deployed networking, public-link privacy and capacity evidence outstanding            |
 | Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
-| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0014 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
+| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0015 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
 | Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Bounded cursor lists, seek plans and a 50,000-row/10-tenant local steady/burst/recovery baseline verified; 2,450 operations passed. Hosted transport, larger/skewed data, soak, workers and saturation remain unverified                                                                                                                                                                                                                                                                               |
 | Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Planned                                                                                                                                                                                                                                                                                  |
 | Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 64 fast and 191 complete integration cases passed on 2026-11-05; historical failed/interrupted reports retained; deployed receivers/log retention, local three-case PostgreSQL recovery verified; host monitoring and hosted restore/incident rehearsal outstanding |
-| Data lifecycle         | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules             | Planned                                                                                                                                                                                                                                                                                  |
+| Data lifecycle         | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules             | Eleven bounded opt-in cleanup tasks, dry-run preview, durable checkpoints, payment/custody safeguards and alerts verified locally; tenant/account deletion, financial/log/backup retention and deployed activation remain outstanding                                                                                                                                                                                                                                                                                  |
 
 ## Evidence policy
 
@@ -1126,3 +1126,52 @@ See docs/performance.md for reproduction, interpretation and remaining capacity 
 Completion remains 8.5/10. Initial local performance evidence is now verified, but
 maximum capacity, hosted behavior, longer soak runs, heavily skewed/larger datasets,
 queue/GPS fan-out, dependency saturation and deployed recovery are not established.
+
+## 2026-11-05 — Retention and cleanup safeguards
+
+PR-08/09/10/11/14/18: owner approved closed-shipment GPS after 30 days, unaccepted
+invitations after expiry plus 30 days, and read/sent notifications created over
+90 days ago. Existing token/session/outbox policies are preserved, with stronger
+payment and active-key safeguards on idempotency scrubbing. Pending/missing/reviewed
+payments retain recovery parameters; hashed key tombstones remain permanent.
+Financial records, shipment rows and audit history are not deleted. Only eligible
+location fields are scrubbed, with payment/custody holds and workflow versions intact.
+
+Migration 0015 adds eleven durable task checkpoints and cleanup indexes. Preview
+is bounded/read-only; explicit run and an opt-in API scheduler execute at most
+500 records/task/cycle. Per-task advisory ownership, SKIP LOCKED, local SQL deadlines,
+atomic data/checkpoint writes and graceful drain bound concurrency and failure
+impact. Retention defaults disabled. Metrics/logs expose bounded task/status/count
+fields, with overdue-checkpoint and failed-batch warning rules. See retention.md
+for the exact policy, operator commands, rollout and remaining lifecycle scope.
+
+Windows/Node 24.12.0 disposable-dependency verification:
+- Initial focused run: 27/28 passed in 148.399 seconds. All eight migration, three
+  restore and eleven initial retention cases passed; an old monitoring assertion
+  incorrectly expected the persistent cleanup checkpoint backlog to disappear.
+  The assertion now checks ordinary queues separately and explicitly expects the
+  checkpoint records to remain. Failed evidence is retained as reports/retention-initial.xml.
+- Final delivery/payment/idempotency/monitoring/retention regression: 61/61 passed
+  in 380.646 seconds (reports/retention-final.xml/.json), zero failures, cancellations,
+  skips or todos. This includes the corrected monitoring test, actual local alert
+  delivery and rule tests for cleanup warning gating/firing, plus 13 retention cases.
+- Final expanded policy suite: 14/14 passed in 44.938 seconds
+  (reports/retention-policies-final.xml/.json), adding delivered-GPS cleanup with
+  delivery proof and workflow version preserved. Other cases cover preview, batch
+  caps, repeat runs, active records, payment holds, leases, notification deduplication,
+  private GPS/event fields, checkpoint rollback, missing configuration, distributed
+  ownership and row-lock skipping.
+- Across these runs, 73 distinct targeted integration cases have a passing result;
+  repeated cases are not added again. This is not a clean complete backend CI run.
+- Fast suite: 69/69 passed in 3.979 seconds, zero skips/todos/cancellations/failures.
+  Lint, TypeScript and Bun build (950 modules, 3.57 MB) passed. Test tooling reports
+  local commit=null; source base is 433884b with working-tree retention changes.
+
+No historical migration was modified. No live query, deployed cleanup, main-branch
+merge, push or frontend change occurred. RETENTION_ENABLED=false remains the default;
+apply 0015 and inspect preview on an isolated preview deployment before enabling.
+Remote CI for this change, hosted Neon transaction/deadline verification, representative
+cleanup query/lock/catch-up measurements and operational activation remain gates.
+Current scope does not resolve tenant offboarding, account erasure, driver-profile
+GPS, legal/dispute holds, financial retention, logs or backup lifecycle. Completion
+remains 8.5/10; production readiness remains unverified.

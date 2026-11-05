@@ -7,7 +7,7 @@ No production monitor or external notification destination was deployed.
 
 ## Rollout and configuration
 
-Apply the full migration journal through `0014_shipment_exceptions` before
+Apply the full migration journal through `0015_retention` before
 starting this version. Operational and delivery indexes support oldest-work,
 dead-letter and unresolved payment review probes. Ordinary transactional index creation takes
 table locks: rehearse lock duration on representative data and schedule the
@@ -197,3 +197,10 @@ Failed deliveries in custody contribute to the indexed held_packages backlog.
 IsoTrackHeldPackageOverdue warns after 24 hours plus ten minutes pending.
 Age uses failed_at, or conservatively created_at for legacy rows; GPS does not reset it.
 See shipment-exceptions.md for reconciliation and return operations.
+
+## Retention cleanup
+
+Migration 0015 adds durable cleanup checkpoints. The retention backlog is the age
+of the oldest successful task checkpoint (or its initial creation time). Automatic
+cleanup defaults off. RetentionOverdue is enabled only when cleanup is enabled;
+RetentionFailures reports failed batches. See retention.md for policies and runbook.

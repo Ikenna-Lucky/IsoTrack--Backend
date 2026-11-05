@@ -27,6 +27,7 @@ import { trackingServerOptions } from "@/socket/server-options";
 import { startNotificationWorker } from "@/workers/notification.worker";
 import { startPaymentReconciliation } from "@/services/payments";
 import { env } from "@/lib/env";
+import { startRetention } from "./services/retention";
 
 // Hono app
 const app = new Hono();
@@ -82,6 +83,7 @@ const io = new Server(httpServer, trackingServerOptions(env.FRONTEND_URL));
 registerSocketHandlers(io, trackingDependencies);
 const notificationRuntime = startNotificationWorker();
 const paymentRuntime = startPaymentReconciliation();
+const retentionRuntime = startRetention();
 
 let shuttingDown = false;
 function shutdown() {
@@ -95,6 +97,7 @@ function shutdown() {
       io.close(),
       notificationRuntime.close(),
       paymentRuntime.close(),
+      retentionRuntime.close(),
     ]);
     clearTimeout(deadline);
     operations.close();

@@ -32,6 +32,10 @@ const envSchema = z
       }, "Use comma-separated exact proxy IP addresses, without CIDRs or wildcards"),
 
     DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+    RETENTION_ENABLED: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
     METRICS_TOKEN: z.preprocess(
       (value) => (value === "" ? undefined : value),
       z

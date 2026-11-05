@@ -54,6 +54,14 @@ export const deliveryConfirmations = pgTable(
       .on(t.availableAt)
       .where(sql`${t.deliveryState}='dead'`),
     index("delivery_confirmations_expiry_idx").on(t.expiresAt),
+    index("delivery_confirmations_expired_cleanup_idx")
+      .on(t.expiresAt, t.id)
+      .where(sql`${t.consumedAt} is null and ${t.deliveryState}<>'processing'`),
+    index("delivery_confirmations_consumed_cleanup_idx")
+      .on(t.consumedAt, t.id)
+      .where(
+        sql`${t.consumedAt} is not null and ${t.deliveryState}<>'processing'`,
+      ),
     uniqueIndex("delivery_confirmations_active_idx")
       .on(t.shipmentId)
       .where(sql`${t.consumedAt} is null and ${t.revokedAt} is null`),

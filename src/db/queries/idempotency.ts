@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { WriteActor } from "../../lib/idempotency";
+import { resolvedRequest } from "./retention.ts";
 
 export type WriteOperation = "shipments.create" | "payments.initialize";
 export interface Reservation {
@@ -126,9 +127,9 @@ export function finishCheckoutStatement(
 }
 
 export function scrubRequestsStatement() {
-  return sql`with old as (select id from idempotency_requests where created_at<statement_timestamp()-interval '30 days'
-    and scrubbed_at is null and (lease_until is null or lease_until<=statement_timestamp())
-    order by created_at limit 5000 for update skip locked)
+  return sql`with old as (select id from idempotency_requests t where created_at<statement_timestamp()-interval '30 days'
+    and expires_at<=statement_timestamp() and scrubbed_at is null and (lease_until is null or lease_until<=statement_timestamp())
+    and ${resolvedRequest} order by created_at limit 5000 for update skip locked)
     update idempotency_requests set parameters=null,response=null,scrubbed_at=statement_timestamp(),lease_token=null,lease_until=null
     where id in(select id from old) returning jsonb_build_object('id',id) as result`;
 }

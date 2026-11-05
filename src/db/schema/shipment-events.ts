@@ -20,6 +20,9 @@ export const shipmentEvents = pgTable(
   (t) => [
     index("shipment_events_shipment_id_idx").on(t.shipmentId),
     index("shipment_events_created_at_idx").on(t.createdAt),
+    index("shipment_events_gps_cleanup_idx")
+      .on(t.createdAt, t.id)
+      .where(sql`${t.location} is not null`),
     index("shipment_events_page_idx").on(
       t.shipmentId,
       t.createdAt.desc(),

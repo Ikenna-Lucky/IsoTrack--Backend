@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import type { Telemetry } from "./telemetry.ts";
 export const readinessStatement =
-  "select p.checkout_state,s.version,s.recipient_email,s.return_state,d.code_hash,e.action from payments p,payment_checkout_guards g,shipment_payment_receipts r,account_actions a,notification_outbox n,shipments s,delivery_confirmations d,shipment_exceptions e where false";
+  "select p.checkout_state,s.version,s.recipient_email,s.return_state,d.code_hash,e.action,c.last_success_at from payments p,payment_checkout_guards g,shipment_payment_receipts r,account_actions a,notification_outbox n,shipments s,delivery_confirmations d,shipment_exceptions e,retention_runs c where false";
 
 interface Dependencies {
   database: (signal: AbortSignal) => Promise<unknown>;
@@ -89,6 +89,7 @@ export function createOperationalRouter(deps: Dependencies) {
           "payments",
           "payment_reviews",
           "held_packages",
+          "retention",
         ]);
         if (
           rows.length !== queues.size ||

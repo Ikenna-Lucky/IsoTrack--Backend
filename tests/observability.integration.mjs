@@ -309,7 +309,8 @@ test("backlog metrics read durable delayed work, dead letters, expired leases an
       .filter(
         (row) =>
           !row.labels.queue.startsWith("delivery_") &&
-          row.labels.queue !== "held_packages",
+          row.labels.queue !== "held_packages" &&
+          row.labels.queue !== "retention",
       )
       .every((row) => row.value >= 590),
   );
@@ -317,7 +318,15 @@ test("backlog metrics read durable delayed work, dead letters, expired leases an
   active = app();
   await scrape();
   assert.ok(
-    (await metrics.present.get()).values.every((row) => row.value === 0),
+    (await metrics.present.get()).values
+      .filter((row) => row.labels.queue !== "retention")
+      .every((row) => row.value === 0),
+  );
+  assert.equal(
+    (await metrics.present.get()).values.find(
+      (row) => row.labels.queue === "retention",
+    ).value,
+    1,
   );
 });
 

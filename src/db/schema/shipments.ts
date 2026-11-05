@@ -71,6 +71,13 @@ export const shipments = pgTable(
       .notNull(),
   },
   (t) => [
+    index("shipments_gps_cleanup_idx")
+      .on(
+        sql`(case when ${t.status}='delivered' then ${t.actualDelivery}
+      when ${t.status}='cancelled' then ${t.updatedAt} when ${t.status}='failed' and ${t.returnState}='received' then ${t.returnedAt} end)`,
+        t.id,
+      )
+      .where(sql`${t.currentLocation} is not null`),
     check("shipments_version_check", sql`${t.version} >= 0`),
     check(
       "shipments_attempt_number_check",

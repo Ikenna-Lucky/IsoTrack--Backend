@@ -1,5 +1,6 @@
 import { pgTable, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { notificationTypeEnum, notificationStatusEnum } from "./enums";
 import { users } from "./users";
 
@@ -24,6 +25,9 @@ export const notifications = pgTable(
     index("notifications_user_id_idx").on(t.userId),
     index("notifications_is_read_idx").on(t.isRead),
     index("notifications_created_at_idx").on(t.createdAt),
+    index("notifications_cleanup_idx")
+      .on(t.createdAt, t.id)
+      .where(sql`${t.isRead} and ${t.status}='sent'`),
   ],
 );
 

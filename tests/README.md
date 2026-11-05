@@ -160,3 +160,11 @@ Run npm run test:load -- smoke or -- baseline with Docker available. These are
 explicit performance runs outside automatic integration discovery. They use
 production HTTP/auth/SQL code with a test-only pooled PostgreSQL TCP adapter.
 See docs/performance.md for traffic, thresholds, evidence and limitations.
+
+## Retention cleanup
+
+retention.integration.mjs applies the full migration journal to disposable PostgreSQL
+and checks read-only preview, bounded deletion, replay safety, payment/lease/custody
+holds, GPS scrubbing, private notification deduplication, atomic checkpoints, task
+ownership and row-lock skipping. retention.test.mjs covers overlap, failure reporting
+and graceful stop. No configured database or live recipient is used.

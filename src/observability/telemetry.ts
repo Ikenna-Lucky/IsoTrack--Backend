@@ -14,7 +14,9 @@ type Event =
   | "authentication_attempt"
   | "dependency_failure"
   | "service_started"
-  | "shutdown_failed";
+  | "shutdown_failed"
+  | "retention_failed"
+  | "retention_completed";
 
 // Log fields are an allowlist. Errors, SQL, URLs, bodies and headers never enter
 // the sink, even if an upstream caller accidentally supplies them.
@@ -43,7 +45,13 @@ export function createEventLogger(
       )
         output[key] = value;
     }
-    for (const key of ["status", "durationSeconds", "attempted", "failed"]) {
+    for (const key of [
+      "status",
+      "durationSeconds",
+      "attempted",
+      "failed",
+      "affected",
+    ]) {
       const value = fields[key];
       if (typeof value === "number" && Number.isFinite(value) && value >= 0)
         output[key] = value;
@@ -89,6 +97,24 @@ export function createTelemetry() {
     labelNames: ["outcome"],
     registers: [registry],
   });
+  const retentionRuns = new Counter({
+    name: "isotrack_retention_runs_total",
+    help: "Bounded cleanup batches",
+    labelNames: ["task", "status"],
+    registers: [registry],
+  });
+  const retentionAffected = new Counter({
+    name: "isotrack_retention_affected_total",
+    help: "Deleted or scrubbed records",
+    labelNames: ["task"],
+    registers: [registry],
+  });
+  const retentionEnabled = new Gauge({
+    name: "isotrack_retention_enabled",
+    help: "Automatic cleanup enabled on this replica",
+    registers: [registry],
+  });
+  retentionEnabled.set(0);
   const ready = new Gauge({
     name: "isotrack_dependency_ready",
     help: "Most recent dependency check",
@@ -132,6 +158,9 @@ export function createTelemetry() {
     database,
     failures,
     sweep,
+    retentionRuns,
+    retentionAffected,
+    retentionEnabled,
     ready,
     snapshots,
     present,
