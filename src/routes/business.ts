@@ -1,13 +1,13 @@
-import { shipmentContactColumns } from "@/db/queries/user-columns";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { authenticate, requireRole } from "@/middleware/auth";
 import { db } from "@/db";
-import { businesses, shipments } from "@/db/schema";
-import { getBusinessShipmentStats } from "@/db/queries/shipments";
+import { businesses } from "@/db/schema";
+import { createBusinessAnalyticsRouter } from "./shipment-reads";
+import { writeStore } from "@/services/write-store";
 import { findUserById, sanitizeUser } from "@/db/queries/users";
 import { success, error } from "@/lib/response";
 
@@ -88,37 +88,7 @@ businessRouter.patch(
 );
 
 // GET /business/analytics
-businessRouter.get("/analytics", async (c) => {
-  const userId = c.get("userId" as never) as string;
-  const biz = await ensureBusiness(userId);
-
-  const statusStats = await getBusinessShipmentStats(biz.id);
-
-  const revenueRows = await db
-    .select({ priceKobo: shipments.priceKobo })
-    .from(shipments)
-    .where(eq(shipments.businessId, biz.id));
-
-  const totalRevenueKobo = revenueRows.reduce((acc, s) => acc + s.priceKobo, 0);
-
-  const recentShipments = await db.query.shipments.findMany({
-    where: eq(shipments.businessId, biz.id),
-    with: { driver: { with: { user: { columns: shipmentContactColumns } } }, customer: { columns: shipmentContactColumns } },
-    orderBy: desc(shipments.createdAt),
-    limit: 10,
-  });
-
-  return success(c, {
-    data: {
-      statusBreakdown: statusStats,
-      totalShipments: Object.values(statusStats).reduce((a, b) => a + b, 0),
-      totalRevenueKobo,
-      recentShipments,
-    },
-  });
-});
-
-// ─── Notification preferences ─────────────────────────────────────────────────
+businessRouter.route("/", createBusinessAnalyticsRouter(writeStore));
 
 const notifPrefsSchema = z.object({
   shipmentCreated: z
@@ -186,7 +156,8 @@ businessRouter.patch(
         notificationPreferences: businesses.notificationPreferences,
       });
 
-    if (!updated) return error(c, "Failed to save notification preferences", 500);
+    if (!updated)
+      return error(c, "Failed to save notification preferences", 500);
     return success(c, {
       data: updated.notificationPreferences,
       message: "Notification preferences saved",

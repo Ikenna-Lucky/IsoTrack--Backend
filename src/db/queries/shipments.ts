@@ -7,24 +7,27 @@ import {
   type ShipmentTransition,
 } from "./shipment-access";
 import { nanoid } from "nanoid";
-import { eq, and, desc, count } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { shipments, shipmentEvents } from "@/db/schema";
 import type { NewShipment, Shipment } from "@/db/schema";
 
 // ─── Read ──────────────────────────────────────────────────────────────────────
 
+// Payment commands need an ownership check, not the complete shipment graph.
 export async function findShipmentById(id: string, actor: ShipmentActor) {
-  return db.query.shipments.findFirst({
-    columns: actor.role === "business" ? undefined : { recipientEmail: false },
-    where: and(eq(shipments.id, id), shipmentAccessPredicate(shipments, actor)),
-    with: {
-      driver: { with: { user: { columns: shipmentContactColumns } } },
-      customer: { columns: shipmentContactColumns },
-      events: { orderBy: desc(shipmentEvents.createdAt) },
-      payment: true,
-    },
-  });
+  const [row] = await db
+    .select({ id: shipments.id })
+    .from(shipments)
+    .where(
+      and(
+        eq(shipments.id, id),
+        shipmentAccessPredicate(shipments, actor),
+        sql`exists(select 1 from users where id=${actor.userId} and is_active and role::text=${actor.role})`,
+      ),
+    )
+    .limit(1);
+  return row;
 }
 
 export async function findShipmentByTrackingId(trackingId: string) {
@@ -83,25 +86,4 @@ export async function createShipment(data: NewShipment): Promise<Shipment> {
   const row = result.rows[0]?.shipment as Record<string, unknown> | undefined;
   if (!row) throw new Error("Failed to create shipment");
   return shipmentFromDatabaseJson(row);
-}
-
-// ─── Analytics ─────────────────────────────────────────────────────────────────
-
-export async function getBusinessShipmentStats(businessId: string) {
-  const rows = await db
-    .select({
-      status: shipments.status,
-      count: count(),
-    })
-    .from(shipments)
-    .where(eq(shipments.businessId, businessId))
-    .groupBy(shipments.status);
-
-  return rows.reduce(
-    (acc, row) => {
-      acc[row.status] = row.count;
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
 }

@@ -8,7 +8,7 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8.5/10** after local regression, performance baselines and opt-in retention checks
+Current completion estimate: **8.5/10** after local regression, performance baselines, retention and shipment read privacy checks
 (2026-11-05). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
@@ -20,9 +20,9 @@ deployed observability, load testing and hosted recovery evidence remain substan
 | Workstream             | Acceptance criteria                                                                                                 | Current status                                                                                                                                                                                                                                                                           |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports          | Complete local regression: 191 integration and 64 fast cases pass, lint/types/build pass; CI has three disjoint integration groups, independent reports and a final gate; GitHub/Linux execution and repository merge rules remain unverified                                                                          |
-| Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | List contact/driver projection verified through HTTP/PostgreSQL; detail and analytics boundaries still require dedicated integration evidence                                                                                                                                                                                                                                     |
+| Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | List, detail and analytics contact/driver boundaries verified through authenticated HTTP/PostgreSQL; detail payment fields restricted, event history bounded; hosted/client adoption and other response surfaces remain outstanding                                                                                                                                                                                                                                     |
 | Private fleets         | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests           | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding                                                                                          |
-| Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail lookup now requires actor scope; PostgreSQL predicate tests passed; Command HTTP, write-race and fleet denial verified; full detail-route/hosted verification outstanding                                                                                                                                                 |
+| Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail HTTP and SQL role/ownership/assignment checks verified locally; command HTTP, write-race and fleet denial verified; hosted/full-client verification outstanding                                                                                                                                                 |
 | Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, guarded login/signup/recovery HTTP, atomic signup and credential races verified locally; full app/browser journeys, verified-email policy, hosting ingress, provider and deployed evidence outstanding                       |
 | Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/update/history/outbox/saved results are atomic; creation and command replay, workflow versions, races, stale cycles and lost acknowledgements verified locally; Recipient-code delivery proof and failed-delivery/return custody verified locally; physical/recipient trust policy, client/hosted adoption and capacity outstanding                                                                                            |
 | Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Shipment checkout guards, reconciliation, single applied receipts, additional-money review and verified full-refund resolution pass local SQL/HTTP/fault tests; actual Stripe sandbox, partial/applied refunds, disputes, abuse budgets and deployed operations outstanding |
@@ -1175,3 +1175,43 @@ cleanup query/lock/catch-up measurements and operational activation remain gates
 Current scope does not resolve tenant offboarding, account erasure, driver-profile
 GPS, legal/dispute holds, financial retention, logs or backup lifecycle. Completion
 remains 8.5/10; production readiness remains unverified.
+
+
+## 2026-11-05 — Shipment detail and analytics response privacy
+
+PR-identity/tenant/privacy/read-performance scope: explicit shipment, account,
+driver, payment and event projections replace full detail graphs and private driver
+relations in analytics. Recipient email remains business-only; drivers receive no
+payment object. Current active role and ownership/fleet assignment are checked in
+the read SQL. Payment command access checks now fetch only shipment identity.
+Details return at most 50 latest events with eventsTruncated; recent analytics
+returns at most ten shipments. Analytics computes exact counts/quoted-price sums
+inside PostgreSQL in one snapshot, and GET no longer creates a missing profile.
+The existing totalRevenueKobo field remains quoted value, not settled revenue.
+See shipment-response-privacy.md for contracts and limitations.
+
+Local Windows/Node 24.12.0 evidence, source base 307ae81 plus these working changes:
+- Initial combined privacy/pagination run: 12/15 passed in 64.501 seconds. All seven
+  pagination and first five privacy cases passed. Three later cases failed because
+  the fixture reused a session generation after deliberately toggling account
+  active state. Renewal is now isolated in beforeEach; production invalidation was
+  correct. Original report remains reports/shipment-reads.xml.
+- Corrected expanded privacy integration run: 9/9 passed in 44.037 seconds,
+  reports/shipment-reads-final.xml/.json, zero failures/skips/todos/cancellations.
+  Signed JWT/session authentication, real HTTP and PostgreSQL 17/full migrations
+  cover allowed and denied tenants/roles, SQL role/active/assignment rechecks,
+  exact private relation fields, events/payment ordering/nulls, aggregate scope,
+  missing profiles, storage failure and future-column privacy.
+- Across those runs, 16 distinct targeted integration cases have a passing result;
+  this is not a fresh full backend integration run. CI discovers the new suite.
+- Final fast suite: 70/70 passed in 2.666 seconds with no skips/todos/cancellations.
+  The new unsafe-money-total test is a synthetic handler boundary test.
+- Lint and TypeScript passed. Bun build passed: 952 modules, 3.57 MB. The initial
+  build package resolution was sandbox-blocked; the approved retry succeeded.
+
+No migration, frontend edit, live database/provider request, push, main merge or
+live deployment occurred. All work remains on isoTrack-dev-branch. Hosted Neon,
+full remote CI and frontend contract adoption are unverified for this artifact.
+Older-history HTTP paging, large-tenant analytics rollups/load, public tracking
+address/event privacy and other response surfaces remain outstanding. Completion
+remains 8.5/10, a planning estimate; production readiness remains unverified.
