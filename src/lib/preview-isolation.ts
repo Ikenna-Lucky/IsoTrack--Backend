@@ -1,3 +1,13 @@
+export function assertPreviewPreparation(config: Record<string, unknown>) {
+  if (config.GITHUB_REF !== "refs/heads/isotrack-preview-branch")
+    throw new Error("Only the preview branch may prepare preview data");
+  if (config.PREVIEW_PREPARE_ENABLED !== "true")
+    throw new Error(
+      "Preview preparation is not enabled; finish the schema review and environment setup first",
+    );
+  assertPreviewIsolation(config);
+}
+
 export function assertPreviewIsolation(config: Record<string, unknown>) {
   const required = (name: string) => {
     const value = config[name];

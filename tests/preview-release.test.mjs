@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertPreviewIsolation } from "../src/lib/preview-isolation.ts";
+import {
+  assertPreviewIsolation,
+  assertPreviewPreparation,
+} from "../src/lib/preview-isolation.ts";
 import { createReleaseRouter } from "../src/observability/release.ts";
-import { deployHook, verifyPreview } from "../scripts/preview-release.mjs";
+import { verifyPreview } from "../scripts/preview-release.mjs";
 
 const config = {
   DEPLOYMENT_ENV: "preview",
@@ -19,12 +22,24 @@ const config = {
   APP_URL: "https://preview.onrender.com",
   PREVIEW_APP_HOST: "preview.onrender.com",
   LIVE_APP_HOST: "live.onrender.com",
-  RENDER_PREVIEW_SERVICE_ID: "srv-preview",
-  RENDER_LIVE_SERVICE_ID: "srv-live",
-  RENDER_PREVIEW_DEPLOY_HOOK:
-    "https://api.render.com/deploy/srv-preview?key=fixture-secret",
   PREVIEW_FIXTURE_PASSWORD: "fixture-preview-password-32-characters",
 };
+test("preview preparation fails closed until enabled and never accepts dev/main/PR refs", () => {
+  const ready = {
+    ...config,
+    GITHUB_REF: "refs/heads/isotrack-preview-branch",
+    PREVIEW_PREPARE_ENABLED: "true",
+  };
+  assert.doesNotThrow(() => assertPreviewPreparation(ready));
+  for (const change of [
+    { PREVIEW_PREPARE_ENABLED: undefined },
+    { PREVIEW_PREPARE_ENABLED: "false" },
+    { GITHUB_REF: "refs/heads/isoTrack-dev-branch" },
+    { GITHUB_REF: "refs/heads/main" },
+    { GITHUB_REF: "refs/pull/1/merge" },
+  ])
+    assert.throws(() => assertPreviewPreparation({ ...ready, ...change }));
+});
 test("preview isolation refuses live resource aliases, workers, unknown releases and payment credentials", () => {
   assert.doesNotThrow(() => assertPreviewIsolation(config));
   for (const change of [
@@ -45,24 +60,6 @@ test("preview isolation refuses live resource aliases, workers, unknown releases
     { LIVE_DATABASE_HOST: "ep-preview.neon.test." },
   ])
     assert.throws(() => assertPreviewIsolation({ ...config, ...change }));
-});
-test("Render hook is pinned to a different preview service and exact release, without redirects or arbitrary hosts", () => {
-  assert.equal(deployHook(config).searchParams.get("ref"), config.RELEASE_SHA);
-  for (const change of [
-    { RENDER_LIVE_SERVICE_ID: "srv-preview" },
-    {
-      RENDER_PREVIEW_DEPLOY_HOOK:
-        "https://api.render.com/deploy/srv-live?key=x",
-    },
-    {
-      RENDER_PREVIEW_DEPLOY_HOOK: "https://evil.test/deploy/srv-preview?key=x",
-    },
-    {
-      RENDER_PREVIEW_DEPLOY_HOOK:
-        "https://api.render.com/deploy/srv-preview?key=x&ref=main",
-    },
-  ])
-    assert.throws(() => deployHook({ ...config, ...change }));
 });
 test("release identity contains only environment/SHA and is not cached", async () => {
   const response = await createReleaseRouter(

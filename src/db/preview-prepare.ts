@@ -4,6 +4,8 @@ import { sql, type SQL } from "drizzle-orm";
 import { hash, compare } from "bcryptjs";
 import { fileURLToPath } from "node:url";
 import { assertPreviewIsolation } from "../lib/preview-isolation.ts";
+import { assertPreviewBaseline } from "./preview-baseline.ts";
+import { mkdir, writeFile } from "node:fs/promises";
 import { runMigrations } from "./migration-runner.ts";
 import {
   previewAccounts,
@@ -29,7 +31,8 @@ async function main() {
       });
     },
   };
-  await runMigrations(
+  await assertPreviewBaseline(store);
+  const applied = await runMigrations(
     store,
     fileURLToPath(new URL("../../drizzle", import.meta.url)),
   );
@@ -52,9 +55,38 @@ async function main() {
   } else {
     await store.transaction(previewFixtureStatements(await hash(password, 12)));
   }
+  await mkdir("reports", { recursive: true });
+  await writeFile(
+    "reports/preview-preparation.json",
+    JSON.stringify(
+      {
+        environment: "preview",
+        sha: process.env.RELEASE_SHA,
+        passed: true,
+        migrationsApplied: applied,
+        fixturesVerified: true,
+        preparedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
   console.log("Preview migrations and fixture accounts verified.");
 }
-main().catch(() => {
+main().catch(async () => {
+  await mkdir("reports", { recursive: true });
+  await writeFile(
+    "reports/preview-preparation.json",
+    JSON.stringify(
+      {
+        environment: "preview",
+        passed: false,
+        failedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
   console.error(
     "Preview preparation failed; inspect isolation settings and preview migration history.",
   );

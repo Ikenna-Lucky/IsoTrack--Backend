@@ -1383,3 +1383,27 @@ Render Free sleep/SMTP constraints are documented from official docs; this previ
 is not a production-availability or million-user capacity claim. Completion remains
 8.5/10 as a planning estimate. Production readiness and hosted preview readiness
 remain unverified until the missing gates pass.
+
+## 2026-11-06 — Preview branch and Render-owned deployment correction
+
+Source base ed9840d plus working-tree changes. Preview preparation now runs only
+on isotrack-preview-branch; final checks require it to pass before Render's
+After CI Checks Pass deployment. Missing preparation switch fails closed.
+Removed deployment hooks and separated hosted verification from commit CI to
+avoid a Render/check dependency cycle. Main and dev retain normal CI.
+
+User-provided Neon metadata confirms copied application tables and zero migration
+records. A read-only baseline guard rejects missing/empty history on copied schemas
+before migration writes. Recommended resolution is a new empty database within the
+existing preview branch, preserving the copied database. No hosted changes made.
+
+Verification: 81/81 fast tests passed in 8.572 seconds; five preview fixture/baseline
+integration tests passed against disposable PostgreSQL 17 in 19.563 seconds, with
+zero failures, skips, cancellations or todos. Reports: unit.xml/.json and
+preview-render-auto.xml. Lint and TypeScript passed. Integration cases exercise
+fresh database acceptance and migrated, missing-ledger and empty-ledger states
+without inventing history or changing fixture accounts on rejection.
+
+Hosted preparation/deployment/smoke, full remote CI, Docker startup (previously
+blocked by image-pull DNS), provider journeys and rollback remain unverified.
+Completion remains 8.5/10 as a planning estimate, not production certification.
