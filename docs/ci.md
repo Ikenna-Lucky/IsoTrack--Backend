@@ -144,3 +144,14 @@ Backend load baseline (.github/workflows/performance.yml) is a separate manually
 triggered workflow. It runs a chosen isolated load profile and retains its JSON
 report for 14 days. It uses the same action allowlist as Backend CI. See
 performance.md; it is not an additional required merge check or a deployment.
+
+## Full backend delivery journey
+
+`tests/delivery-journey.integration.mjs` is discovered by the existing integration
+runner and assigned to exactly one shard. It launches the real Bun entrypoint,
+disposable PostgreSQL/Redis and local SMTP, covering private-fleet enrollment and
+the complete shipment journey, including retry after a failed database response
+following commit. CI's existing Bun setup and Docker images suffice; no hosted
+credentials or new actions are needed. Results appear in the shard's retained
+JUnit/JSON reports. See [delivery-journey.md](delivery-journey.md) for commands,
+assertions and the explicit Neon/provider transport boundaries.

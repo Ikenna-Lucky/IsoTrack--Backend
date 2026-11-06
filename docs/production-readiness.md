@@ -8,7 +8,7 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8.5/10** after local regression, performance baselines, retention, shipment read privacy, public tracking/history, shared request-protection checks and preview release tooling
+Current completion estimate: **8.8/10** after local regression, performance baselines, retention, shipment read privacy, public tracking/history, shared request-protection checks and preview release tooling
 (2026-11-06). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
@@ -1476,3 +1476,76 @@ Next: commit/push dev, promote through preview CI, deploy preview, update local
 expected release SHA and rerun complete hosted smoke. Existing deployed SHA remains
 2775e05975faf9deb1f1d9ddc252f66646823862 and has not received this fix.
 Completion remains 8.5/10 pending successful hosted functional verification.
+
+
+## 2026-11-06 — Hosted preview smoke passed
+
+Preview https://isotrack-backend-preview.onrender.com release
+8db086e0dcae8940002058e8565d88a2d9e895d3 passed the complete existing smoke
+script at 2026-11-06T20:48:04.539Z. Exact preview identity and database readiness
+were verified before fixture credentials were submitted. All 20 recorded checks
+passed: liveness, anonymous denial, public tracking, four role logins, scoped
+shipment/history reads, foreign-tenant denial, oversized-body rejection and shared
+tracking-budget enforcement. Public privacy assertions also passed. Evidence:
+reports/preview-smoke.json (ignored local artifact, contains no credentials).
+
+The prior owner-shipment 500 is resolved in this deployed release. The smoke run
+created authentication sessions and consumed request budgets; no shipment writes,
+provider calls, deployments, migrations, main changes or commits were performed.
+Updated only expected RELEASE_SHA in private .env.preview and returned checkout
+to isoTrack-dev-branch after verification.
+
+Planning estimate advances to 8.7/10. This establishes the scoped preview smoke
+journeys, not full production readiness or capacity. Next proposed build: connect
+private-fleet onboarding and the complete shipment lifecycle into backend API
+journey tests with real database/Redis, retry and cross-business assertions.
+Actual email/payment provider delivery remains a separate sandbox gate. Hosted
+recovery, monitoring/alert delivery, workload measurements and assembled frontend
+journeys remain outstanding; frontend work is still deferred.
+
+
+## 2026-11-06 — Assembled backend delivery journeys
+
+PR-01/04/05/06/09/10/11/14: added three independently reset integration scenarios
+that start the real Bun src/index.ts entrypoint with its production HTTP routers,
+JWT/session middleware, Drizzle/Neon HTTP driver, Redis guards and Socket.IO wiring.
+Accounts, business profiles, invitations, fleet membership and shipments originate
+through HTTP. Disposable PostgreSQL 17 receives the actual migration journal and
+real bound queries; Redis 7 and local SMTP are real services. No preview/live writes.
+
+Scenarios verify invitation-only onboarding and one-business membership; shipment
+creation/replay/key conflict, concurrent assignment replay, stale version and
+cross-business/role denials; pickup/transit/out-for-delivery; GPS persistence and
+authorized socket delivery; recipient-code issuance/replay, local SMTP dispatch,
+wrong-code rejection, confirmation and final per-role shipment/history reads.
+Fresh database snapshots verify durable state, one completion event and consumed
+challenge, unchanged event/notification counts on replay, and no plaintext proof in
+saved retry records. Structured events are checked for credential/proof leakage.
+
+The third scenario injects a database HTTP 503 after confirmation commits, checks
+the app's 500 and already-durable delivery, then retries the same request and
+verifies the saved result without duplicate business effects. An initial socket
+disconnection experiment returned 200 because Bun can transparently retry fetch;
+its failed expectation is retained in reports/delivery-journey-initial-failure.xml.
+Changed the injection to a deterministic HTTP failure; no failed result counted
+as passing. Test setup/container cleanup is bounded, service names/ports unique.
+
+Evidence: final 3/3 journeys passed in 17.863 seconds, zero failures/skips/todos/
+cancellations. reports/delivery-journey.xml and validated JSON companion retain
+counts/scope. All 81 fast tests passed in 4.138 seconds; lint and TypeScript passed.
+The existing integration file discovery/sharding includes the new suite without
+a workflow or secret change; GitHub execution of these new tests is still pending.
+Only tests/documentation changed, so the application bundle was not rebuilt.
+
+Boundaries: test-only loopback HTTP adapter replaces Neon's remote HTTPS edge but
+uses the actual driver and PostgreSQL parameter binding/results. Automatic workers
+remain off; production delivery-email processor is drained explicitly through
+local SMTP. This does not prove Gmail, Stripe, remote Neon networking, worker
+scheduling, frontend/browser behavior, capacity or hosted recovery. Full protocol
+emulation is not claimed. See docs/delivery-journey.md for repeatable commands.
+
+Work remains on isoTrack-dev-branch; no commit, push, main change, migration of a
+hosted database, provider call or deployment performed. Planning estimate advances
+to 8.8/10. Next release gates include remote CI for the new journeys, actual provider
+sandbox/worker delivery, deployed monitoring/alert delivery and hosted recovery
+rehearsal. Production readiness remains unverified beyond the evidenced scope.
