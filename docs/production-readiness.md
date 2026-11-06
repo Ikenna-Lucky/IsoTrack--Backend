@@ -1384,7 +1384,26 @@ is not a production-availability or million-user capacity claim. Completion rema
 8.5/10 as a planning estimate. Production readiness and hosted preview readiness
 remain unverified until the missing gates pass.
 
-<<<<<<< HEAD
+
+## 2026-11-06 — Dedicated preview branch
+
+The user selected their existing isotrack-preview-branch for preview deployments,
+replacing the earlier dev-deployment plan. It was one commit behind dev and was
+fast-forwarded from 7e2d9ef to ed9840d without creating a merge commit. Branch policy
+changes are now working-tree changes on preview: CI includes main/dev/preview,
+but the preview job, no-cancel release behavior and CLI deployment guard target
+only refs/heads/isotrack-preview-branch. The runbook now separates development,
+preview and unchanged main/live deployment roles.
+
+Seven targeted release-helper tests pass (0 failures/skips/todos/cancellations),
+including explicit denial of dev/main/PR/tag refs. No runtime/database change
+requires another integration run for this branch-policy edit. Before enabling
+the repository deploy flag, commit this policy and bring it back into dev so its
+older workflow does not still request a dev deployment; GitHub environment rules
+must allow only preview. No commit, push, remote branch creation, main change or
+hosted deployment was performed. Existing container DNS/hosted setup gates and
+8.5/10 planning estimate remain unchanged.
+
 ## 2026-11-06 — Preview branch and Render-owned deployment correction
 
 Source base ed9840d plus working-tree changes. Preview preparation now runs only
@@ -1408,24 +1427,19 @@ without inventing history or changing fixture accounts on rejection.
 Hosted preparation/deployment/smoke, full remote CI, Docker startup (previously
 blocked by image-pull DNS), provider journeys and rollback remain unverified.
 Completion remains 8.5/10 as a planning estimate, not production certification.
-=======
 
-## 2026-11-06 — Dedicated preview branch
+## 2026-11-06 — Resolve committed preview merge markers
 
-The user selected their existing isotrack-preview-branch for preview deployments,
-replacing the earlier dev-deployment plan. It was one commit behind dev and was
-fast-forwarded from 7e2d9ef to ed9840d without creating a merge commit. Branch policy
-changes are now working-tree changes on preview: CI includes main/dev/preview,
-but the preview job, no-cancel release behavior and CLI deployment guard target
-only refs/heads/isotrack-preview-branch. The runbook now separates development,
-preview and unchanged main/live deployment roles.
+Unresolved merge markers prevented GitHub from parsing Backend CI and also affected
+the smoke helper, its tests and deployment/readiness documentation. Resolved all
+five files using the agreed preparation-only GitHub workflow and Render-owned
+auto-deployment; retained both historical readiness entries. Working branch:
+isoTrack-dev-branch. No commit, push, deployment or hosted database action performed.
 
-Seven targeted release-helper tests pass (0 failures/skips/todos/cancellations),
-including explicit denial of dev/main/PR/tag refs. No runtime/database change
-requires another integration run for this branch-policy edit. Before enabling
-the repository deploy flag, commit this policy and bring it back into dev so its
-older workflow does not still request a dev deployment; GitHub environment rules
-must allow only preview. No commit, push, remote branch creation, main change or
-hosted deployment was performed. Existing container DNS/hosted setup gates and
-8.5/10 planning estimate remain unchanged.
->>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
+Verification: js-yaml parsed the workflow and dependency assertions confirmed
+quality/integration -> preview_prepare -> final checks with no legacy deploy job.
+Lint passed; six preview helper tests passed with zero failures/skips/todos/
+cancellations. Repository-wide tracked-source search found no remaining conflict
+markers. Git diff --check passed. GitHub execution remains pending after push.
+User reports preview startup succeeds but readiness returns not_ready; database
+connectivity/schema verification and deployed smoke remain unresolved release gates.
