@@ -1384,7 +1384,26 @@ is not a production-availability or million-user capacity claim. Completion rema
 8.5/10 as a planning estimate. Production readiness and hosted preview readiness
 remain unverified until the missing gates pass.
 
-<<<<<<< HEAD
+
+## 2026-11-06 — Dedicated preview branch
+
+The user selected their existing isotrack-preview-branch for preview deployments,
+replacing the earlier dev-deployment plan. It was one commit behind dev and was
+fast-forwarded from 7e2d9ef to ed9840d without creating a merge commit. Branch policy
+changes are now working-tree changes on preview: CI includes main/dev/preview,
+but the preview job, no-cancel release behavior and CLI deployment guard target
+only refs/heads/isotrack-preview-branch. The runbook now separates development,
+preview and unchanged main/live deployment roles.
+
+Seven targeted release-helper tests pass (0 failures/skips/todos/cancellations),
+including explicit denial of dev/main/PR/tag refs. No runtime/database change
+requires another integration run for this branch-policy edit. Before enabling
+the repository deploy flag, commit this policy and bring it back into dev so its
+older workflow does not still request a dev deployment; GitHub environment rules
+must allow only preview. No commit, push, remote branch creation, main change or
+hosted deployment was performed. Existing container DNS/hosted setup gates and
+8.5/10 planning estimate remain unchanged.
+
 ## 2026-11-06 — Preview branch and Render-owned deployment correction
 
 Source base ed9840d plus working-tree changes. Preview preparation now runs only
@@ -1408,24 +1427,22 @@ without inventing history or changing fixture accounts on rejection.
 Hosted preparation/deployment/smoke, full remote CI, Docker startup (previously
 blocked by image-pull DNS), provider journeys and rollback remain unverified.
 Completion remains 8.5/10 as a planning estimate, not production certification.
-=======
 
-## 2026-11-06 — Dedicated preview branch
+## 2026-11-06 — Hosted preview smoke failure
 
-The user selected their existing isotrack-preview-branch for preview deployments,
-replacing the earlier dev-deployment plan. It was one commit behind dev and was
-fast-forwarded from 7e2d9ef to ed9840d without creating a merge commit. Branch policy
-changes are now working-tree changes on preview: CI includes main/dev/preview,
-but the preview job, no-cancel release behavior and CLI deployment guard target
-only refs/heads/isotrack-preview-branch. The runbook now separates development,
-preview and unchanged main/live deployment roles.
+Target: https://isotrack-backend-preview.onrender.com, expected release
+2775e05975faf9deb1f1d9ddc252f66646823862. Used private ignored .env.preview;
+no secret values, access tokens or response bodies retained in diagnostic output.
+Switched clean dev checkout to preview. Preview still contained committed conflict
+markers in five tooling/documentation files; resolved locally with the agreed
+preparation-only flow. YAML parsing, lint and six helper tests passed. Not committed
+or pushed; main/live untouched.
 
-Seven targeted release-helper tests pass (0 failures/skips/todos/cancellations),
-including explicit denial of dev/main/PR/tag refs. No runtime/database change
-requires another integration run for this branch-policy edit. Before enabling
-the repository deploy flag, commit this policy and bring it back into dev so its
-older workflow does not still request a dev deployment; GitHub environment rules
-must allow only preview. No commit, push, remote branch creation, main change or
-hosted deployment was performed. Existing container DNS/hosted setup gates and
-8.5/10 planning estimate remain unchanged.
->>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
+Hosted diagnostic observed release/readiness/liveness 200, anonymous shipment 401,
+public tracking 200, fixture owner login 200, then owner shipment detail 500.
+Smoke failed; remaining actor/history/isolation/body/rate-limit checks did not run.
+The public tracking privacy assertion passed before login. Initial connection
+attempts were transiently unsuccessful; later requests reached the exact expected
+release. reports/preview-smoke.json records the failed primary run. Root cause
+requires corresponding Render logs; no hosted schema or application fix attempted.
+Completion remains 8.5/10; preview functional verification is failed/incomplete.
