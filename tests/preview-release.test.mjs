@@ -2,7 +2,25 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { assertPreviewIsolation } from "../src/lib/preview-isolation.ts";
 import { createReleaseRouter } from "../src/observability/release.ts";
-import { deployHook, verifyPreview } from "../scripts/preview-release.mjs";
+import {
+  assertPreviewBranch,
+  deployHook,
+  verifyPreview,
+} from "../scripts/preview-release.mjs";
+
+test("only the dedicated preview branch can trigger preview deployment", () => {
+  assert.doesNotThrow(() =>
+    assertPreviewBranch("refs/heads/isotrack-preview-branch"),
+  );
+  for (const ref of [
+    undefined,
+    "refs/heads/isoTrack-dev-branch",
+    "refs/heads/main",
+    "refs/pull/1/merge",
+    "refs/tags/isotrack-preview-branch",
+  ])
+    assert.throws(() => assertPreviewBranch(ref));
+});
 
 const config = {
   DEPLOYMENT_ENV: "preview",

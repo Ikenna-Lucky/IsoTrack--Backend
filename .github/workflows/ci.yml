@@ -2,7 +2,7 @@ name: Backend CI
 
 on:
   push:
-    branches: [main, isoTrack-dev-branch]
+    branches: [main, isoTrack-dev-branch, isotrack-preview-branch]
   pull_request:
   workflow_dispatch:
 
@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: backend-ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/isoTrack-dev-branch' || vars.PREVIEW_DEPLOY_ENABLED != 'true' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/isotrack-preview-branch' || vars.PREVIEW_DEPLOY_ENABLED != 'true' }}
 
 jobs:
   quality:
@@ -99,7 +99,7 @@ jobs:
 
   preview:
     needs: checks
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/isoTrack-dev-branch' && vars.PREVIEW_DEPLOY_ENABLED == 'true' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/isotrack-preview-branch' && vars.PREVIEW_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     environment: preview
@@ -143,7 +143,7 @@ jobs:
           node scripts/check-preview-image.mjs isotrack-preview-check
       - name: Migrate and prepare only the isolated preview database
         run: bun run src/db/preview-prepare.ts
-      - name: Deploy exact dev commit and verify hosted behavior
+      - name: Deploy exact preview commit and verify hosted behavior
         run: node scripts/preview-release.mjs
       - name: Retain preview evidence
         if: ${{ always() }}
