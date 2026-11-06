@@ -92,7 +92,7 @@ before(async () => {
     createShipmentDetailRouter({
       execute: async (s) => {
         if (unavailable) throw new Error("private storage failure");
-        const result = await pg.query(s);
+        const result = await pg.query(s, { prepared: true });
         return result ? result.split("\n").map((r) => JSON.parse(r)) : [];
       },
     }),
@@ -102,7 +102,7 @@ before(async () => {
     createBusinessAnalyticsRouter({
       execute: async (statement) => {
         if (unavailable) throw new Error("private storage failure");
-        const result = await pg.query(statement);
+        const result = await pg.query(statement, { prepared: true });
         return result ? result.split("\n").map(JSON.parse) : [];
       },
     }),
