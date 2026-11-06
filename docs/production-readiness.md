@@ -8,7 +8,7 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8.5/10** after local regression, performance baselines, retention, shipment read privacy, public tracking/history and shared request-protection checks
+Current completion estimate: **8.5/10** after local regression, performance baselines, retention, shipment read privacy, public tracking/history, shared request-protection checks and preview release tooling
 (2026-11-06). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
@@ -31,7 +31,7 @@ deployed observability, load testing and hosted recovery evidence remain substan
 | Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
 | Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0015 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
 | Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Bounded cursor lists, seek plans and a 50,000-row/10-tenant local steady/burst/recovery baseline verified; 2,450 operations passed. Hosted transport, larger/skewed data, soak, workers and saturation remain unverified                                                                                                                                                                                                                                                                               |
-| Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Planned                                                                                                                                                                                                                                                                                  |
+| Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Dev-only opt-in Render source release job, isolation guards, Docker proof and hosted smoke tooling prepared; local helper/fixture checks pass; container pull blocked by Docker Hub DNS, hosted configuration/release/rollback unverified                                                                                                                                                                                                                                                                                  |
 | Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 64 fast and 191 complete integration cases passed on 2026-11-05; historical failed/interrupted reports retained; deployed receivers/log retention, local three-case PostgreSQL recovery verified; host monitoring and hosted restore/incident rehearsal outstanding |
 | Data lifecycle         | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules             | Eleven bounded opt-in cleanup tasks, dry-run preview, durable checkpoints, payment/custody safeguards and alerts verified locally; tenant/account deletion, financial/log/backup retention and deployed activation remain outstanding                                                                                                                                                                                                                                                                                  |
 
@@ -1326,3 +1326,60 @@ load/free-tier limits and assembled client/preview/recovery remain release gates
 Other driver/business/profile endpoints, edge volumetric/connection controls and
 link lifecycle remain outside this batch. Completion remains 8.5/10 as a planning
 estimate; production readiness remains unverified.
+
+
+## 2026-11-06 — Isolated Render preview release preparation
+
+PR-09/11/15/16/17: user confirmed Render as the existing backend host. The existing
+CI workflow now has an opt-in preview job after checks, restricted to dev push
+and a repository enable flag. It uses a preview GitHub environment, serializes
+releases, validates distinct app/database/Redis hosts and Render service IDs before
+writes, checks the container, migrates/seeds only synthetic preview data, invokes
+a service-scoped deploy hook pinned to the commit, and verifies hosted identity,
+readiness and safe role/privacy/request-boundary smoke behavior. No workflow_dispatch
+on main is required. The job remains disabled without PREVIEW_DEPLOY_ENABLED=true.
+
+A Bun 1.3.12 multi-stage Dockerfile excludes local secrets by allowlisted context,
+runs as bun, and bakes the source SHA. Render rebuilds source; this does not promote
+the same tested registry image digest. The public /health/release endpoint contains
+only environment/SHA with no-store. Preview startup rejects matching live hosts
+(including Neon pooler/direct/trailing-dot forms), enabled workers/retention,
+unknown SHA or payment credentials. Other environments preserve worker defaults.
+Preview disables SMTP/background delivery and reconciliation because this first
+safe, zero-budget environment does not claim provider or always-on worker evidence.
+
+The runbook docs/preview-deployment.md covers separate free resources, Render
+bootstrap/readiness settings, GitHub environment secrets/variables, enabling the
+job, report review and safe application rollback/forward repair. .env.preview.example
+contains placeholders, and all local .env.* copies except examples are ignored.
+Host guards depend on accurately supplied live identities; they do not attest
+resource ownership/data provenance. No provider account, service, credential,
+GitHub setting, preview/live database or main branch was changed. No push/commit,
+hosted deploy, real provider call or real recipient message was made.
+
+Verification: Windows/Node 24.12.0, source base 7e2d9ef plus working-tree changes:
+- Final fast suite: 81/81 passed in 2.946 seconds, zero failures/skips/todos/
+  cancellations (reports/unit.xml/.json). Six new cases cover isolation, service
+  hook pinning, minimal release identity, no credential submission before matching
+  identity, failing privacy/tenant assertions and redacted successful smoke reports.
+  HTTP/provider responses are synthetic here; no hosted smoke success is claimed.
+- Preview fixture SQL applied against the full migration journal in disposable
+  PostgreSQL 17: final 2/2 passed in 19.058 seconds with no failures/skips/todos/
+  cancellations, reports/preview-fixtures-final.xml/.json. Independently seeded
+  cases verify current private-fleet/tenant relationships and atomic duplicate
+  rejection without credential overwrite. Hosted Neon transport/preparation remains
+  unverified. Earlier passing fixture evidence remains reports/preview-fixtures.xml.
+- Lint, TypeScript and final Bun build passed (958 modules, 3.59 MB).
+- Two approved local Docker builds failed before compiling application code: Docker
+  Desktop cannot resolve production.cloudfront.docker.com when pulling the pinned
+  Bun base images. The network-isolated container boot check therefore did not run.
+  reports/preview-container.json records blocked status; container verification is
+  not treated as passing and must not be bypassed in CI.
+
+Outstanding gates: user dashboard setup with actual free quotas, full remote CI,
+container startup, Render/Neon/Valkey/proxy behavior, deployed commit/smoke evidence,
+rollback/restore rehearsal, provider sandbox and full frontend/worker journeys.
+Render Free sleep/SMTP constraints are documented from official docs; this preview
+is not a production-availability or million-user capacity claim. Completion remains
+8.5/10 as a planning estimate. Production readiness and hosted preview readiness
+remain unverified until the missing gates pass.

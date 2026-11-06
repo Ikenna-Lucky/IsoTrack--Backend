@@ -12,6 +12,9 @@ integration-results.xml
 .env
 .env.local
 .env.production
+.env.*
+!.env.example
+!.env.preview.example
 
 # Bun lockfile (keep bun.lockb but ignore if using npm)
 # bun.lockb

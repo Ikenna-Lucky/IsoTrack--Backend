@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { tokenDurationSeconds } from "./token-duration";
 import { trustedProxyAddresses } from "./request-peer";
+import { assertPreviewIsolation } from "./preview-isolation";
 
 const tokenLifetime = z.string().refine((value) => {
   try {
@@ -14,6 +15,21 @@ const tokenLifetime = z.string().refine((value) => {
 const envSchema = z
   .object({
     PORT: z.coerce.number().default(8000),
+    DEPLOYMENT_ENV: z.enum(["local", "preview", "production"]).default("local"),
+    RELEASE_SHA: z
+      .string()
+      .regex(/^(unknown|[a-f0-9]{40})$/)
+      .default("unknown"),
+    NOTIFICATION_WORKERS_ENABLED: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((v) => v === "true"),
+    PREVIEW_DATABASE_HOST: z.string().optional(),
+    LIVE_DATABASE_HOST: z.string().optional(),
+    PREVIEW_REDIS_HOST: z.string().optional(),
+    LIVE_REDIS_HOST: z.string().optional(),
+    PREVIEW_APP_HOST: z.string().optional(),
+    LIVE_APP_HOST: z.string().optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -81,6 +97,18 @@ const envSchema = z
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
   })
   .superRefine((value, context) => {
+    if (value.DEPLOYMENT_ENV === "preview") {
+      try {
+        assertPreviewIsolation(value);
+      } catch {
+        context.addIssue({
+          code: "custom",
+          path: ["DEPLOYMENT_ENV"],
+          message:
+            "Preview requires isolated hosts, a release SHA, disabled workers/retention and no payment credentials",
+        });
+      }
+    }
     if (value.ACCOUNT_ACTION_SECRET) {
       let frontend: URL;
       try {

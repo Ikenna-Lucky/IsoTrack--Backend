@@ -30,6 +30,7 @@ import { env } from "@/lib/env";
 import { startRetention } from "./services/retention";
 import { apiBodyBoundary } from "./middleware/api-protection";
 import { closeApiProtection } from "./services/api-protection";
+import { createReleaseRouter } from "./observability/release";
 
 // Hono app
 const app = new Hono();
@@ -43,6 +44,7 @@ app.use("/api/v1/*", apiBodyBoundary());
 
 const operations = createOperationalRuntime();
 app.route("/", operations.router);
+app.route("/", createReleaseRouter(env.DEPLOYMENT_ENV, env.RELEASE_SHA));
 
 // ─── API routes (v1) ─────────────────────────────────────────────────────────
 const v1 = new Hono();
@@ -84,8 +86,13 @@ const httpServer: ServerType = serve({
 const io = new Server(httpServer, trackingServerOptions(env.FRONTEND_URL));
 
 registerSocketHandlers(io, trackingDependencies);
-const notificationRuntime = startNotificationWorker();
-const paymentRuntime = startPaymentReconciliation();
+const notificationRuntime = env.NOTIFICATION_WORKERS_ENABLED
+  ? startNotificationWorker()
+  : { close: async () => {} };
+const paymentRuntime =
+  env.DEPLOYMENT_ENV !== "preview"
+    ? startPaymentReconciliation()
+    : { close: async () => {} };
 const retentionRuntime = startRetention();
 
 let shuttingDown = false;
