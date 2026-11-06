@@ -135,8 +135,8 @@ export function createOperationalRouter(deps: Dependencies) {
   app.get("/health/ready", async (c) => {
     if (deps.draining()) return c.json({ status: "not_ready" }, 503);
     const result = await check();
-    // Redis delivers durable async work. Its outage is degraded service, not a
-    // reason to evict every API replica and prevent new durable writes.
+    // Keep database-backed auth and signed payment callbacks reachable during
+    // Redis outages; budget-protected routes independently return 503.
     const ready = result.database && !deps.draining();
     return c.json({ status: ready ? "ready" : "not_ready" }, ready ? 200 : 503);
   });

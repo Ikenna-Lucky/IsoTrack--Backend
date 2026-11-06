@@ -28,6 +28,8 @@ import { startNotificationWorker } from "@/workers/notification.worker";
 import { startPaymentReconciliation } from "@/services/payments";
 import { env } from "@/lib/env";
 import { startRetention } from "./services/retention";
+import { apiBodyBoundary } from "./middleware/api-protection";
+import { closeApiProtection } from "./services/api-protection";
 
 // Hono app
 const app = new Hono();
@@ -37,6 +39,7 @@ app.use("*", requestTelemetry(telemetry, logEvent));
 app.use("*", prettyJSON());
 app.use("*", secureHeaders());
 app.use("*", apiCors(env.FRONTEND_URL));
+app.use("/api/v1/*", apiBodyBoundary());
 
 const operations = createOperationalRuntime();
 app.route("/", operations.router);
@@ -101,6 +104,7 @@ function shutdown() {
     ]);
     clearTimeout(deadline);
     operations.close();
+    closeApiProtection();
   };
   void drain().catch(() => {
     logEvent("shutdown_failed");

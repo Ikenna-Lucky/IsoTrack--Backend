@@ -18,6 +18,7 @@ import { payments } from "@/db/schema";
 import { findShipmentById } from "@/db/queries/shipments";
 import { success, error } from "@/lib/response";
 import { env } from "@/lib/env";
+import { apiProtection } from "../services/api-protection";
 
 export const paymentsRouter = new Hono();
 async function confirmPayment(payment: SuccessfulPayment) {
@@ -35,7 +36,13 @@ paymentsRouter.route(
     observe: (session, paidAt) => paymentLifecycle!.observe(session, paidAt),
   }),
 );
-paymentsRouter.use("*", authenticate, requireRole("business", "customer"));
+paymentsRouter.use(
+  "*",
+  apiProtection("payments", "peer"),
+  authenticate,
+  requireRole("business", "customer"),
+  apiProtection("payments", "account"),
+);
 
 paymentsRouter.route(
   "/",

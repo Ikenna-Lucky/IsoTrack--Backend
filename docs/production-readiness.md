@@ -8,8 +8,8 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8.5/10** after local regression, performance baselines, retention, shipment read privacy and public tracking/history checks
-(2026-11-05). Update this estimate after each
+Current completion estimate: **8.5/10** after local regression, performance baselines, retention, shipment read privacy, public tracking/history and shared request-protection checks
+(2026-11-06). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
 critical journeys, identity/browser adoption, remaining write controls, provider sandbox/payment policy,
@@ -20,13 +20,14 @@ deployed observability, load testing and hosted recovery evidence remain substan
 | Workstream             | Acceptance criteria                                                                                                 | Current status                                                                                                                                                                                                                                                                           |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports          | Complete local regression: 191 integration and 64 fast cases pass, lint/types/build pass; CI has three disjoint integration groups, independent reports and a final gate; GitHub/Linux execution and repository merge rules remain unverified                                                                          |
+| API request protection | Shared per-address/account budgets, bounded bodies, sanitized retry/failure behavior and cross-instance tests | Redis-backed tracking/shipment/payment budgets and pre-auth API body limits verified locally; signed callbacks remain reachable during Redis failure; hosted proxy/abuse tuning, free-tier budgets and other endpoints remain outstanding |
 | Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | List, detail and analytics boundaries plus minimal public tracking verified locally through HTTP/PostgreSQL; authenticated event history uses scoped cursor pages; hosted/client adoption and other response surfaces remain outstanding                                                                                                                                                                                                                                     |
 | Private fleets         | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests           | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding                                                                                          |
 | Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail HTTP and SQL role/ownership/assignment checks verified locally; command HTTP, write-race and fleet denial verified; hosted/full-client verification outstanding                                                                                                                                                 |
 | Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, guarded login/signup/recovery HTTP, atomic signup and credential races verified locally; full app/browser journeys, verified-email policy, hosting ingress, provider and deployed evidence outstanding                       |
 | Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/update/history/outbox/saved results are atomic; creation and command replay, workflow versions, races, stale cycles and lost acknowledgements verified locally; Recipient-code delivery proof and failed-delivery/return custody verified locally; physical/recipient trust policy, client/hosted adoption and capacity outstanding                                                                                            |
 | Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Shipment checkout guards, reconciliation, single applied receipts, additional-money review and verified full-refund resolution pass local SQL/HTTP/fault tests; actual Stripe sandbox, partial/applied refunds, disputes, abuse budgets and deployed operations outstanding |
-| Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; minimal public-link status/date/event projection verified locally; frontend adoption, distributed adapter/budgets, public-link lifecycle/read abuse budgets, deployed networking and capacity evidence outstanding            |
+| Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; minimal public-link status/date/event projection verified locally; frontend adoption, distributed adapter/budgets, shared public-read budgets verified locally; public-link lifecycle, hosted edge protection, deployed networking and capacity evidence outstanding            |
 | Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
 | Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0015 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
 | Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Bounded cursor lists, seek plans and a 50,000-row/10-tenant local steady/burst/recovery baseline verified; 2,450 operations passed. Hosted transport, larger/skewed data, soak, workers and saturation remain unverified                                                                                                                                                                                                                                                                               |
@@ -1265,3 +1266,63 @@ CI evidence remain unverified for this artifact. Link expiration/rotation,
 distributed public-read abuse protection, full assembled journeys, provider sandbox,
 preview/deployment and hosted recovery/monitoring/capacity remain release work.
 Completion remains 8.5/10 (planning estimate); production readiness is unverified.
+
+
+## 2026-11-06 — Shared API budgets and request boundaries
+
+PR-06/07/08: Redis Lua counters now enforce shared address/account budgets for
+public tracking and authenticated shipment/payment client routes. Address checks
+precede auth DB queries; account checks follow current session/account identity.
+Policy is separate per group/read-write operation, with 60-second first-admission
+windows and expiring HMAC keys. Denials do not extend TTL; raw IPs/identities/URLs
+are not Redis keys. IPv6 /64 and exact trusted-proxy rules reuse existing peer
+resolution. Limits, costs, fixed-window bursts and retry semantics are documented
+in api-request-protection.md. This is not a universal API/edge abuse protection claim.
+
+Exhausted budgets return JSON 429/Retry-After. Redis/peer failures return sanitized
+503/Retry-After without a local allowance or delayed offline queue. Runtime Redis
+connect/command deadlines are one second; dependency errors use the bounded
+api_budget metric/log operation. Shutdown disconnects the client. Signed Stripe
+webhooks precede client budgets and retain their signature/body validation. Global
+readiness remains database-based so auth/webhooks can receive requests during
+Redis degradation; protected routes independently reject until budget recovery.
+
+The common /api/v1 body boundary runs before auth/provider processing. It enforces
+16 KiB ordinary / 256 KiB exact POST webhook sizes by actual byte count, a ten-second
+body-read deadline, stream cancellation and unsupported-compression rejection.
+Existing tighter route limits remain. No request body is parsed or reserialized
+before Stripe signature verification.
+
+Verification: local Windows/Node 24.12.0, base 2e0bde9 plus these working changes:
+- Targeted integration run: node --test --test-concurrency=2 with spec/JUnit
+  reporters on api-protection.integration.mjs, shipment-commands.integration.mjs
+  and tracking-history.integration.mjs. All 26/26 passed in 113.133 seconds,
+  zero failures/cancellations/skips/todos (reports/api-protection.xml/.json).
+- Seven new cases use two actual HTTP servers/Redis clients, Redis 7, signed JWTs,
+  live sessions and fully migrated PostgreSQL 17. A 100-request concurrent burst
+  admitted exactly 60 requests across both servers despite spoofed forwarding
+  headers; 40 received 429. Further cases cover account/read-write isolation,
+  denied real shipment commands leaving rows/events/idempotency unchanged,
+  payment-handler suppression, expiry/no-extension, disconnection/recovery,
+  valid signed webhook bytes during Redis failure and pre-budget fixed/chunked
+  oversize rejection. Public/payment handler counters isolate admission; they do
+  not claim real provider checkout/retrieval. The webhook uses the real verifier
+  for a synthetic unrelated event, not settlement.
+- Nine existing real shipment-command and ten tracking/history regression cases
+  pass in the same run. This is targeted regression, not full remote CI.
+- Fast suite: 75/75 passed in 4.613 seconds, no failures/skips/todos/cancellations.
+  Four new cases verify understated streamed lengths, stalled-body cancellation,
+  missing peers/preflight/errors and malformed Redis results. The stalled-stream
+  test uses a 25ms fixture deadline, not the production ten-second delay.
+- Final lint and TypeScript passed. Initial lint caught an unnecessary type
+  assertion, which was removed; its failed invocation is not treated as a pass.
+  Bun build passed (956 modules, 3.58 MB). Final changes after the integration run
+  were TypeScript-only assertion removal, a health comment and documentation.
+
+No migrations/new secrets, frontend edits, pushes, main merges, live traffic,
+paid infrastructure or deployments occurred. Work remains on isoTrack-dev-branch.
+Remote CI, hosted Redis/Neon/proxy behavior, provider sandbox, multi-instance hosted
+load/free-tier limits and assembled client/preview/recovery remain release gates.
+Other driver/business/profile endpoints, edge volumetric/connection controls and
+link lifecycle remain outside this batch. Completion remains 8.5/10 as a planning
+estimate; production readiness remains unverified.

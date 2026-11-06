@@ -10,10 +10,16 @@ import { env } from "@/lib/env";
 import { createShipmentListRouter } from "./shipment-list";
 import { authenticate, requireRole } from "@/middleware/auth";
 import { createShipmentDetailRouter } from "./shipment-reads";
+import { apiProtection } from "../services/api-protection";
 
 export const shipmentsRouter = new Hono();
 
-shipmentsRouter.use("*", authenticate);
+shipmentsRouter.use(
+  "*",
+  apiProtection("shipments", "peer"),
+  authenticate,
+  apiProtection("shipments", "account"),
+);
 
 shipmentsRouter.route("/", createShipmentListRouter(writeStore));
 

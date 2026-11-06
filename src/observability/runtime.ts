@@ -7,6 +7,7 @@ import { createOperationalRouter, readinessStatement } from "./health";
 import { telemetry, logEvent } from "./telemetry";
 
 const operations = new Set([
+  "api_budget",
   "outbox_redis_producer",
   "outbox_redis_consumer",
   "outbox_delivery",

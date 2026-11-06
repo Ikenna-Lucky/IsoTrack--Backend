@@ -39,8 +39,8 @@ case to uppercase before an indexed equality lookup, and rejects query parameter
 Malformed requests return 400; unknown links return 404. It sets Cache-Control:
 no-store and X-Robots-Tag: noindex, nofollow, including route-level errors. These
 headers are not authentication or a guarantee that a third party cannot copy a
-link. This build does not add link expiration/rotation or distributed public-read
-rate limits; hosting/abuse controls remain deployment work.
+link. Public reads now have shared address budgets; see api-request-protection.md.
+Link expiration/rotation and hosted edge protection remain separate work.
 
 This replaces the earlier public response, which included addresses, a driver
 profile, package description and raw event locations/messages. Frontend work must
