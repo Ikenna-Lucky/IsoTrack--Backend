@@ -17,23 +17,23 @@ deployed observability, load testing and hosted recovery evidence remain substan
 
 ## Release blockers and work order
 
-| Workstream             | Acceptance criteria                                                                                                 | Current status                                                                                                                                                                                                                                                                           |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports          | Complete local regression: 191 integration and 64 fast cases pass, lint/types/build pass; CI has three disjoint integration groups, independent reports and a final gate; GitHub/Linux execution and repository merge rules remain unverified                                                                          |
-| API request protection | Shared per-address/account budgets, bounded bodies, sanitized retry/failure behavior and cross-instance tests | Redis-backed tracking/shipment/payment budgets and pre-auth API body limits verified locally; signed callbacks remain reachable during Redis failure; hosted proxy/abuse tuning, free-tier budgets and other endpoints remain outstanding |
-| Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | List, detail and analytics boundaries plus minimal public tracking verified locally through HTTP/PostgreSQL; authenticated event history uses scoped cursor pages; hosted/client adoption and other response surfaces remain outstanding                                                                                                                                                                                                                                     |
-| Private fleets         | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests           | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding                                                                                          |
-| Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail HTTP and SQL role/ownership/assignment checks verified locally; command HTTP, write-race and fleet denial verified; hosted/full-client verification outstanding                                                                                                                                                 |
-| Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, guarded login/signup/recovery HTTP, atomic signup and credential races verified locally; full app/browser journeys, verified-email policy, hosting ingress, provider and deployed evidence outstanding                       |
-| Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/update/history/outbox/saved results are atomic; creation and command replay, workflow versions, races, stale cycles and lost acknowledgements verified locally; Recipient-code delivery proof and failed-delivery/return custody verified locally; physical/recipient trust policy, client/hosted adoption and capacity outstanding                                                                                            |
-| Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Shipment checkout guards, reconciliation, single applied receipts, additional-money review and verified full-refund resolution pass local SQL/HTTP/fault tests; actual Stripe sandbox, partial/applied refunds, disputes, abuse budgets and deployed operations outstanding |
-| Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; minimal public-link status/date/event projection verified locally; frontend adoption, distributed adapter/budgets, shared public-read budgets verified locally; public-link lifecycle, hosted edge protection, deployed networking and capacity evidence outstanding            |
-| Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding |
-| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0015 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding               |
-| Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Bounded cursor lists, seek plans and a 50,000-row/10-tenant local steady/burst/recovery baseline verified; 2,450 operations passed. Hosted transport, larger/skewed data, soak, workers and saturation remain unverified                                                                                                                                                                                                                                                                               |
-| Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Dev-only opt-in Render source release job, isolation guards, Docker proof and hosted smoke tooling prepared; local helper/fixture checks pass; container pull blocked by Docker Hub DNS, hosted configuration/release/rollback unverified                                                                                                                                                                                                                                                                                  |
-| Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 64 fast and 191 complete integration cases passed on 2026-11-05; historical failed/interrupted reports retained; deployed receivers/log retention, local three-case PostgreSQL recovery verified; host monitoring and hosted restore/incident rehearsal outstanding |
-| Data lifecycle         | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules             | Eleven bounded opt-in cleanup tasks, dry-run preview, durable checkpoints, payment/custody safeguards and alerts verified locally; tenant/account deletion, financial/log/backup retention and deployed activation remain outstanding                                                                                                                                                                                                                                                                                  |
+| Workstream             | Acceptance criteria                                                                                                 | Current status                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Test and CI foundation | Reproducible build, lint, type checks, unit tests, real database/Redis integration and retained CI reports          | Complete local regression: 191 integration and 64 fast cases pass, lint/types/build pass; CI has three disjoint integration groups, independent reports and a final gate; GitHub/Linux execution and repository merge rules remain unverified                                                                                                                                                                           |
+| API request protection | Shared per-address/account budgets, bounded bodies, sanitized retry/failure behavior and cross-instance tests       | Redis-backed tracking/shipment/payment budgets and pre-auth API body limits verified locally; signed callbacks remain reachable during Redis failure; hosted proxy/abuse tuning, free-tier budgets and other endpoints remain outstanding                                                                                                                                                                               |
+| Response privacy       | Shipment and analytics relations select approved contact fields; real API regression tests cover all roles          | List, detail and analytics boundaries plus minimal public tracking verified locally through HTTP/PostgreSQL; authenticated event history uses scoped cursor pages; hosted/client adoption and other response surfaces remain outstanding                                                                                                                                                                                |
+| Private fleets         | Invitation-only onboarding, single business membership, database constraints, cross-business denial tests           | New/existing driver enrollment and fleet constraints implemented; existing-driver handler and database tests pass; abuse controls, full JWT/HTTP and legacy reconciliation evidence outstanding                                                                                                                                                                                                                         |
+| Shipment authorization | Every read/write verifies ownership or assignment; denied writes leave data unchanged                               | Detail HTTP and SQL role/ownership/assignment checks verified locally; command HTTP, write-race and fleet denial verified; hosted/full-client verification outstanding                                                                                                                                                                                                                                                  |
+| Sessions               | Revocation, refresh reuse detection, concurrent refresh policy, password recovery and verification                  | Server sessions, guarded login/signup/recovery HTTP, atomic signup and credential races verified locally; full app/browser journeys, verified-email policy, hosting ingress, provider and deployed evidence outstanding                                                                                                                                                                                                 |
+| Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/update/history/outbox/saved results are atomic; creation and command replay, workflow versions, races, stale cycles and lost acknowledgements verified locally; Recipient-code delivery proof and failed-delivery/return custody verified locally; physical/recipient trust policy, client/hosted adoption and capacity outstanding                                                                            |
+| Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Shipment checkout guards, reconciliation, single applied receipts, additional-money review and verified full-refund resolution pass local SQL/HTTP/fault tests; actual Stripe sandbox, partial/applied refunds, disputes, abuse budgets and deployed operations outstanding                                                                                                                                             |
+| Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; minimal public-link status/date/event projection verified locally; frontend adoption, distributed adapter/budgets, shared public-read budgets verified locally; public-link lifecycle, hosted edge protection, deployed networking and capacity evidence outstanding |
+| Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding                                                                                                                                |
+| Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0015 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding                                                                                                                                              |
+| Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Bounded cursor lists, seek plans and a 50,000-row/10-tenant local steady/burst/recovery baseline verified; 2,450 operations passed. Hosted transport, larger/skewed data, soak, workers and saturation remain unverified                                                                                                                                                                                                |
+| Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Dev-only opt-in Render source release job, isolation guards, Docker proof and hosted smoke tooling prepared; local helper/fixture checks pass; container pull blocked by Docker Hub DNS, hosted configuration/release/rollback unverified                                                                                                                                                                               |
+| Operations             | Redacted telemetry, alert exercise, graceful shutdown, backup restore drill and incident runbooks                   | API/background JSON events, correlation IDs, health probes, private metrics, backlog signals and local Prometheus/Alertmanager drill implemented; 64 fast and 191 complete integration cases passed on 2026-11-05; historical failed/interrupted reports retained; deployed receivers/log retention, local three-case PostgreSQL recovery verified; host monitoring and hosted restore/incident rehearsal outstanding   |
+| Data lifecycle         | Tenant offboarding, account deletion, financial/location retention and public tracking visibility rules             | Eleven bounded opt-in cleanup tasks, dry-run preview, durable checkpoints, payment/custody safeguards and alerts verified locally; tenant/account deletion, financial/log/backup retention and deployed activation remain outstanding                                                                                                                                                                                   |
 
 ## Evidence policy
 
@@ -469,12 +469,12 @@ passed; 43 fast tests and 99 integration tests passed, with no failures, skips,
 todos or cancellations. The complete integration run took about 337 seconds.
 Seven new cases execute the production runner core and all eight actual migration
 files against disposable PostgreSQL 17 using a psql adapter. Reports are retained
-in reports/unit.* and reports/integration.*; local artifact identity is commit=null.
+in reports/unit._ and reports/integration._; local artifact identity is commit=null.
 
 The first complete run failed during PostgreSQL fixture startup: readiness could
 observe the image's temporary Unix-socket initialization server before its restart.
 The shared fixture and older shipment suite now probe the final TCP listener.
-The original failure reports remain in reports/integration-before-startup-fix.*;
+The original failure reports remain in reports/integration-before-startup-fix.\*;
 the full rerun passed after this correction. No failure was hidden by test retries.
 
 Hosted Neon HTTP, the Bun migration CLI against a hosted database, remote Actions,
@@ -509,7 +509,7 @@ commands expose aggregate counts; scheduling and alerts remain deployment work.
 Local Windows / Node 24.12.0: lint, types and Bun 1.3.12 build passed; 48 fast tests
 passed. The full six-file integration run passed 114 cases with zero failures,
 skips, todos or cancellations in about 425 seconds. Reports remain in
-reports/unit.* and reports/integration.*. Fifteen new cases exercise the production
+reports/unit._ and reports/integration._. Fifteen new cases exercise the production
 migration runner/SQL, actual PostgreSQL 17, a Hono HTTP server with the real socket
 peer adapter, jose JWT/session checks, bcrypt and a local SMTP sink. Fixtures use
 synthetic accounts; hosted Neon transport and Gmail are not contacted.
@@ -518,7 +518,7 @@ The initial focused reset test failed because the test supplied incorrect auth
 dependency names; corrected the harness and verified signed-session denial. The
 first full run subsequently passed 111/114, with three Docker command timeouts
 during a long host delay in identity and unchanged outbox/payment tests. Its
-reports are preserved in reports/integration-before-resource-limit.*. Integration
+reports are preserved in reports/integration-before-resource-limit.\*. Integration
 files now run at most two at a time, retaining in-suite concurrency tests and
 per-command deadlines. The report runner's total integration budget is ten minutes
 for the expanded suite; CI retains its fifteen-minute job budget. No assertion,
@@ -528,7 +528,7 @@ After the full pass, a final review tightened rate-window monotonicity so delaye
 older statements cannot rewind an advanced peer/account counter. Reran all fifteen
 identity integration cases, including new SQL/HTTP regressions for that boundary:
 15 passed, zero failures/skips/todos/cancellations. Validated separate JUnit/JSON
-evidence is in reports/account-actions-final.*. The final bundle also passed.
+evidence is in reports/account-actions-final.\*. The final bundle also passed.
 All local reports explicitly use commit=null; remote Actions remains unverified.
 
 Rollout requires migration 0008, ACCOUNT_ACTION_SECRET and trusted frontend/proxy
@@ -574,8 +574,8 @@ compatible. No frontend files were changed; existing request shapes were inspect
 Local Windows / Node 24.12.0 evidence: lint, type checks and Bun 1.3.12 build passed.
 51 fast tests and all 127 integration tests passed with zero failures, skips,
 todos or cancellations. The full seven-file integration run took about 446 seconds
-with two files in parallel. Validated JUnit/JSON evidence remains in reports/unit.*
-and reports/integration.*; commit=null locally. Thirteen new integration cases
+with two files in parallel. Validated JUnit/JSON evidence remains in reports/unit._
+and reports/integration._; commit=null locally. Thirteen new integration cases
 run actual PostgreSQL 17 with the complete migration journal, independent Hono
 HTTP servers, the real socket adapter, bcrypt, session statements and jose-signed
 fixture credentials. They cover shared last-slot contention, peer and pair limits,
@@ -635,7 +635,7 @@ strict type checks and Bun 1.3.12 build passed (841 modules, 3.35 MB). All 51 fa
 tests and 143 integration tests passed with zero failures, skips, todos or
 cancellations. The seven-file full integration run took 611.24 seconds with two
 files in parallel, ending 2026-11-03T23:01:05.897Z. Validated JUnit/JSON results
-are in reports/unit.* and reports/integration.*; local commit=null. Fourteen new
+are in reports/unit._ and reports/integration._; local commit=null. Fourteen new
 payment cases and two migration cases extend the prior 127-test baseline.
 
 The final refund-atomicity change was then checked separately: one focused
@@ -655,7 +655,7 @@ Existing real Redis/SMTP/socket suites also passed against the updated schema.
 
 An earlier full run hit the old ten-minute suite limit with no assertion failure
 reported before termination; its incomplete/failing evidence is retained in
-reports/integration-before-payment-timeout.*. The expanded suite remains bounded
+reports/integration-before-payment-timeout.\*. The expanded suite remains bounded
 at fifteen minutes, two files in parallel, with a twenty-minute CI job allowance.
 Report validation still rejects missing/truncated, zero-test, failing or skipped
 results. Remote GitHub/Linux execution has not been performed.
@@ -724,8 +724,8 @@ evidence is retained in reports/observability-final.xml and .json. This is split
 full-run/recheck evidence, not a single successful 149-case run.
 
 Earlier failed and interrupted full runs are retained in
-reports/integration-before-observability-recheck.* and
-reports/integration-interrupted-monitoring.*. The two unchanged cases affected by
+reports/integration-before-observability-recheck._ and
+reports/integration-interrupted-monitoring._. The two unchanged cases affected by
 the earlier shared host stall passed their focused recheck, retained in
 reports/monitoring-recovery.xml. CI now prepares all four service images before
 the integration phase so image-download failures are reported separately from
@@ -759,13 +759,13 @@ cancellations in 53.814 seconds, ending 2026-11-04T08:34:06.495Z on Windows/Node
 24.12.0 with PostgreSQL 17. The source was stopped/removed before restore. Backup
 took 931 ms, producing a 66,354-byte custom archive; restore plus application
 primitive verification took 16,041 ms against the 120-second local budget.
-Validated JUnit/JSON and detailed measurements are in reports/recovery.* and
+Validated JUnit/JSON and detailed measurements are in reports/recovery._ and
 reports/recovery-measurements.json; local commit=null. All 58 fast cases and lint
 passed again; types passed earlier in this build. Full integration and remote CI
 were not rerun for this isolated drill; existing runtime code is unchanged.
 The initial three-case pass preceded the source-removal strengthening and is not
 used as evidence of that condition. An earlier sandbox-denied Docker run is retained in
-reports/recovery-sandbox-denied.* and is not counted as a test pass.
+reports/recovery-sandbox-denied._ and is not counted as a test pass.
 
 Production backup scheduling, encrypted independent retention, hosting support,
 agreed RPO/RTO, realistic restore volume, revoked-session/token handling, external
@@ -849,7 +849,7 @@ Verification: all 60 fast cases passed (two new), plus all 27 focused integratio
 cases (seven pagination, eight migration, three recovery, nine commands), without
 skips/failures/todos/cancellations. The focused run took 106.839 seconds on local
 Windows/Node 24.12.0/PostgreSQL 17. Validated JUnit/JSON evidence is in
-reports/shipment-pagination-final.*; local commit=null. Lint, types and Bun build
+reports/shipment-pagination-final.\*; local commit=null. Lint, types and Bun build
 (939 modules, 3.54 MB) passed. The complete backend suite and remote CI were not
 rerun for this read-path/additive-index build; those earlier reports remain as
 historical evidence, not a pass for the full current artifact.
@@ -862,7 +862,7 @@ reports/shipment-pagination-initial.xml records that failure. A dedicated
 10,000-row batch-import/tied-timestamp dataset now exercises deep ID seeking;
 the plan test passed all four scopes/filters with the new composite indexes,
 no shipment sequential scan and at most 21 shipment rows examined for a 20-row
-page. EXPLAIN ANALYZE JSON is retained in reports/shipment-page-plan-*.json. This
+page. EXPLAIN ANALYZE JSON is retained in reports/shipment-page-plan-\*.json. This
 is one workload shape, not a substitute for varied data/load measurements.
 
 See docs/shipment-pagination.md for removed numbered pages/totals, default driver
@@ -920,7 +920,7 @@ expanded suite then passed 11/11; later added metrics/insert-guard/retention cas
 bring delivery coverage to 13 in the final focused report.
 
 The complete backend run reported ETIMEDOUT/SIGTERM with truncated JUnit; its
-failed/incomplete evidence is retained in reports/integration-delivery-interrupted.*
+failed/incomplete evidence is retained in reports/integration-delivery-interrupted.\*
 and the canonical integration reports. It is not a full pass. The creation/checkout
 recheck initially passed 10/29 and failed 19 with 401 after its email-change case:
 that fixture previously omitted migration 0008's real email/session invalidation.
@@ -1147,6 +1147,7 @@ fields, with overdue-checkpoint and failed-batch warning rules. See retention.md
 for the exact policy, operator commands, rollout and remaining lifecycle scope.
 
 Windows/Node 24.12.0 disposable-dependency verification:
+
 - Initial focused run: 27/28 passed in 148.399 seconds. All eight migration, three
   restore and eleven initial retention cases passed; an old monitoring assertion
   incorrectly expected the persistent cleanup checkpoint backlog to disappear.
@@ -1177,7 +1178,6 @@ Current scope does not resolve tenant offboarding, account erasure, driver-profi
 GPS, legal/dispute holds, financial retention, logs or backup lifecycle. Completion
 remains 8.5/10; production readiness remains unverified.
 
-
 ## 2026-11-05 — Shipment detail and analytics response privacy
 
 PR-identity/tenant/privacy/read-performance scope: explicit shipment, account,
@@ -1192,6 +1192,7 @@ The existing totalRevenueKobo field remains quoted value, not settled revenue.
 See shipment-response-privacy.md for contracts and limitations.
 
 Local Windows/Node 24.12.0 evidence, source base 307ae81 plus these working changes:
+
 - Initial combined privacy/pagination run: 12/15 passed in 64.501 seconds. All seven
   pagination and first five privacy cases passed. Three later cases failed because
   the fixture reused a session generation after deliberately toggling account
@@ -1217,7 +1218,6 @@ Older-history HTTP paging, large-tenant analytics rollups/load, public tracking
 address/event privacy and other response surfaces remain outstanding. Completion
 remains 8.5/10, a planning estimate; production readiness remains unverified.
 
-
 ## 2026-11-05 — Public tracking privacy and paginated event history
 
 PR-06/07/08: anonymous tracking now selects only status/dates and at most 21
@@ -1238,6 +1238,7 @@ index was introduced in 0012. See tracking-history.md for contracts, compatibili
 changes and live-list behavior.
 
 Evidence: Windows, Node 24.12.0, source base 3a33035 plus these working-tree changes.
+
 - Local integration command: node --test --test-concurrency=2 with spec/JUnit
   reporters, covering tests/tracking-history.integration.mjs,
   tests/shipment-reads.integration.mjs and tests/shipment-page.integration.mjs.
@@ -1267,7 +1268,6 @@ distributed public-read abuse protection, full assembled journeys, provider sand
 preview/deployment and hosted recovery/monitoring/capacity remain release work.
 Completion remains 8.5/10 (planning estimate); production readiness is unverified.
 
-
 ## 2026-11-06 — Shared API budgets and request boundaries
 
 PR-06/07/08: Redis Lua counters now enforce shared address/account budgets for
@@ -1294,6 +1294,7 @@ Existing tighter route limits remain. No request body is parsed or reserialized
 before Stripe signature verification.
 
 Verification: local Windows/Node 24.12.0, base 2e0bde9 plus these working changes:
+
 - Targeted integration run: node --test --test-concurrency=2 with spec/JUnit
   reporters on api-protection.integration.mjs, shipment-commands.integration.mjs
   and tracking-history.integration.mjs. All 26/26 passed in 113.133 seconds,
@@ -1327,7 +1328,6 @@ Other driver/business/profile endpoints, edge volumetric/connection controls and
 link lifecycle remain outside this batch. Completion remains 8.5/10 as a planning
 estimate; production readiness remains unverified.
 
-
 ## 2026-11-06 — Isolated Render preview release preparation
 
 PR-09/11/15/16/17: user confirmed Render as the existing backend host. The existing
@@ -1351,13 +1351,14 @@ safe, zero-budget environment does not claim provider or always-on worker eviden
 The runbook docs/preview-deployment.md covers separate free resources, Render
 bootstrap/readiness settings, GitHub environment secrets/variables, enabling the
 job, report review and safe application rollback/forward repair. .env.preview.example
-contains placeholders, and all local .env.* copies except examples are ignored.
+contains placeholders, and all local .env.\* copies except examples are ignored.
 Host guards depend on accurately supplied live identities; they do not attest
 resource ownership/data provenance. No provider account, service, credential,
 GitHub setting, preview/live database or main branch was changed. No push/commit,
 hosted deploy, real provider call or real recipient message was made.
 
 Verification: Windows/Node 24.12.0, source base 7e2d9ef plus working-tree changes:
+
 - Final fast suite: 81/81 passed in 2.946 seconds, zero failures/skips/todos/
   cancellations (reports/unit.xml/.json). Six new cases cover isolation, service
   hook pinning, minimal release identity, no credential submission before matching
@@ -1383,7 +1384,6 @@ Render Free sleep/SMTP constraints are documented from official docs; this previ
 is not a production-availability or million-user capacity claim. Completion remains
 8.5/10 as a planning estimate. Production readiness and hosted preview readiness
 remain unverified until the missing gates pass.
-
 
 ## 2026-11-06 — Dedicated preview branch
 
@@ -1427,22 +1427,25 @@ without inventing history or changing fixture accounts on rejection.
 Hosted preparation/deployment/smoke, full remote CI, Docker startup (previously
 blocked by image-pull DNS), provider journeys and rollback remain unverified.
 Completion remains 8.5/10 as a planning estimate, not production certification.
+=======
 
-## 2026-11-06 — Hosted preview smoke failure
+## 2026-11-06 — Dedicated preview branch
 
-Target: https://isotrack-backend-preview.onrender.com, expected release
-2775e05975faf9deb1f1d9ddc252f66646823862. Used private ignored .env.preview;
-no secret values, access tokens or response bodies retained in diagnostic output.
-Switched clean dev checkout to preview. Preview still contained committed conflict
-markers in five tooling/documentation files; resolved locally with the agreed
-preparation-only flow. YAML parsing, lint and six helper tests passed. Not committed
-or pushed; main/live untouched.
+The user selected their existing isotrack-preview-branch for preview deployments,
+replacing the earlier dev-deployment plan. It was one commit behind dev and was
+fast-forwarded from 7e2d9ef to ed9840d without creating a merge commit. Branch policy
+changes are now working-tree changes on preview: CI includes main/dev/preview,
+but the preview job, no-cancel release behavior and CLI deployment guard target
+only refs/heads/isotrack-preview-branch. The runbook now separates development,
+preview and unchanged main/live deployment roles.
 
-Hosted diagnostic observed release/readiness/liveness 200, anonymous shipment 401,
-public tracking 200, fixture owner login 200, then owner shipment detail 500.
-Smoke failed; remaining actor/history/isolation/body/rate-limit checks did not run.
-The public tracking privacy assertion passed before login. Initial connection
-attempts were transiently unsuccessful; later requests reached the exact expected
-release. reports/preview-smoke.json records the failed primary run. Root cause
-requires corresponding Render logs; no hosted schema or application fix attempted.
-Completion remains 8.5/10; preview functional verification is failed/incomplete.
+Seven targeted release-helper tests pass (0 failures/skips/todos/cancellations),
+including explicit denial of dev/main/PR/tag refs. No runtime/database change
+requires another integration run for this branch-policy edit. Before enabling
+the repository deploy flag, commit this policy and bring it back into dev so its
+older workflow does not still request a dev deployment; GitHub environment rules
+must allow only preview. No commit, push, remote branch creation, main change or
+hosted deployment was performed. Existing container DNS/hosted setup gates and
+8.5/10 planning estimate remain unchanged.
+
+> > > > > > > c012b51267fbef0a1fb797988f55f38c55230b20
