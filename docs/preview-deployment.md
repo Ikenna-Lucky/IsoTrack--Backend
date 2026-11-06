@@ -1,38 +1,54 @@
 # Isolated Render preview
 
-Status: tooling prepared; no hosted service, credential, database or deployment was
-created or changed by this build. The GitHub preview job is disabled by default.
-Main and the existing live service remain separate. Follow these steps yourself
-in the dashboards; never paste credentials into chat, commits or screenshots.
+Development stays on `isoTrack-dev-branch`, reviewed preview releases go to
+`isotrack-preview-branch`, and `main` remains the existing live release.
+No hosted deployment or database preparation has been performed by this build.
 
-## What this preview proves
+## Release sequence
 
+<<<<<<< HEAD
+1. Commit and test on dev. Promote reviewed work to preview using a merge commit
+   (GitHub's Create a merge commit option), giving preview a distinct commit SHA.
+2. Backend CI runs quality and integration tests. On preview pushes it also validates
+   isolation, builds/boots the Docker image without network access, then migrates
+   and prepares synthetic fixtures in the preview database.
+3. The final `checks` job requires preparation to succeed on preview pushes.
+4. Render's **After CI Checks Pass** auto-deploy builds that preview commit.
+5. After deployment, run the separate verification command below and inspect its
+   report. Hosted verification is intentionally outside commit CI: waiting for
+   Render inside a check that Render itself awaits would deadlock.
+=======
 The existing quality/integration/checks jobs must pass before the optional preview
 job runs on a push to isotrack-preview-branch. That job validates isolation, builds and
 boots a network-isolated Docker image, migrates/seeds only the preview database,
 triggers the preview service's secret hook with the exact commit, waits for matching
 release identity/readiness, and runs deployed smoke checks. Reports contain SHA,
 check names/statuses and pass/fail, never credentials or response bodies.
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
 
-The hosted checks cover four fixture logins, owner/driver/customer shipment/history
-access, foreign-tenant denial, anonymous denial, public tracking privacy, body size
-and public tracking throttling. They create login sessions and consume budgets,
-but do not change shipment workflow, charge cards or send email. Fixture preparation
-creates four synthetic accounts, two businesses, a private driver and two shipments.
-It verifies existing fixture passwords/roles rather than overwriting them.
+There is no deploy hook or Render API token in this flow. Render rebuilds source;
+this does not promote the exact image digest tested in CI. Skipped/neutral checks
+can count as passing in Render, so missing preparation configuration deliberately
+fails the preview job rather than skipping it. See [Render deploys](https://render.com/docs/deploys).
 
-This initial preview disables notification workers, automatic retention and payment
-credentials. Email invitation/recovery/delivery-code dispatch, in-app background
-delivery and Stripe checkout/settlement are not established here. No frontend
-integration is included. A later provider-sandbox/assembled-journey gate is required.
+## Prepare the Neon database
 
-Render Free sleeps after inactivity and blocks SMTP ports used by this app's Gmail
-sender. It cannot demonstrate always-on worker availability. Keep preview synthetic
-and on free compute. Sources: [Free limits](https://render.com/docs/free),
-[Docker builds](https://render.com/docs/docker),
-[deploy hooks](https://render.com/docs/deploy-hooks),
-[commit-specific deploys](https://render.com/docs/deploys).
+A separate Neon preview branch is acceptable. Confirm the branch selector says
+**preview**, never production, before creating resources or copying a connection URL.
+The user's schema-only copy has seven application tables and zero migration records.
+It cannot safely receive the migration sequence as-is: initial migrations would
+collide with existing tables. The preparation guard rejects that state before writes.
 
+<<<<<<< HEAD
+Preserve the copied database and create an empty database inside the preview branch:
+
+1. Select the ISOTrack project and preview branch in Neon.
+2. Under Postgres database, open Databases and select Add database.
+3. Name it `isotrack_preview`, choose the existing preview database owner, and Create.
+4. Open Connect, explicitly select preview and the new database, and privately copy
+   the complete connection URL. Update only preview Render's `DATABASE_URL` and
+   GitHub preview environment's `PREVIEW_DATABASE_URL`.
+=======
 ## Branch roles
 
 - `isoTrack-dev-branch`: ongoing backend development and CI.
@@ -53,38 +69,39 @@ Leave repository variable PREVIEW_DEPLOY_ENABLED absent/false for now. CI discov
 the new tests; preview is skipped. The workflow lives in existing ci.yml and uses
 push events, so no default-branch workflow_dispatch merge is necessary. Existing
 allowed actions suffice. All normal CI gates still apply.
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
 
-Suggested commit: `Add isolated Render preview release workflow`.
+The database path changes; the preview endpoint hostname can stay the same. Do not
+change the live service, delete the copied database, run `db:push`, or invent ledger
+rows. Migrations create the new database's application tables and history.
+[Neon database instructions](https://neon.com/docs/manage/databases).
 
-## 2. Create isolated free data services
+`scripts/inspect-preview-schema.sql` contains read-only metadata queries for review.
+A nonempty migration ledger still undergoes the migration runner's hash/order checks;
+its mere presence does not establish compatibility.
 
-1. In Neon, create a **new empty free project**, not a data-bearing clone of the live
-   database. Select PostgreSQL 17 if available to match local verification. Copy its
-   connection URL privately. Record its hostname as PREVIEW_DATABASE_HOST. Record
-   only the live connection's hostname as LIVE_DATABASE_HOST. Never use the live URL
-   as a preview secret. Neon pooler/direct spellings of the same endpoint are treated
-   as the same host by the guard.
-2. For Redis-compatible storage, use a new free Render Key Value instance in the
-   same region as the preview web service, if your account's free allowance permits.
-   Name it distinctly, e.g. isotrack-preview-cache. Select Free, no persistence and
-   noeviction. Record its **internal** connection URL/hostname. Do not enable public
-   access just for CI: preparation only validates this URL; it does not connect to
-   Redis from the GitHub runner. The deployed app connects over Render's network.
-   Alternatively use a genuinely separate free Redis service you already have.
-   Do not upgrade or reuse the live instance to work around a quota.
-3. Record the live Redis hostname separately as LIVE_REDIS_HOST. All comparison
-   hosts omit scheme, credentials, path and port. Isolation checks compare configured
-   hosts; they cannot prove you accurately identified live resources or that a
-   database has never contained production data. Confirm the dashboard identities.
+## Render preview settings
 
-New Render Key Value instances currently use Valkey 8. Local limiter evidence is
-Redis 7; hosted compatibility must pass the smoke gate. Free storage is ephemeral,
-so counter reset after restart is expected. No preview background queue runs.
-See [Render Key Value](https://render.com/docs/key-value) and
-[Neon free plan](https://neon.com/docs/introduction/plans).
+Use a separate Free Web Service connected to **isotrack-preview-branch**, Docker
+runtime, repository-root Dockerfile/context, blank Docker Command, and
+**After CI Checks Pass** auto-deploy. Use health path `/health/ready` once preparation
+has completed, before the initial deployment. Do not click the initial Deploy button
+until database preparation and CI configuration are ready; service creation can
+initiate an initial deployment outside the later auto-deploy sequence.
 
-## 3. Create a NEW Render preview web service
+Use `.env.preview.example` for runtime settings, replacing placeholders privately.
+Use separate preview JWT secrets, preview database and separate preview Key Value
+URL. Keep notification workers and retention disabled and Stripe credentials blank.
+Do not manually set RELEASE_SHA: the Docker entrypoint uses Render's build commit.
+Keep TRUSTED_PROXY_IPS blank until exact immediate proxy/header behavior is verified.
 
+<<<<<<< HEAD
+The Render Key Value internal URL is used by the hosted app. GitHub preparation
+validates its identity but does not connect to it. Live hostnames are comparison
+values only; never supply live connection credentials. Hostnames omit scheme,
+username/password, port, and path. Neon pooler/direct aliases are normalized.
+Guards depend on correctly identifying resources; they cannot establish provenance.
+=======
 1. In Render choose New → Web Service and connect the backend GitHub repository.
    Create a separate service named isotrack-backend-preview (or another distinct
    available name). Do not edit the existing live service.
@@ -118,54 +135,66 @@ See [Render Key Value](https://render.com/docs/key-value) and
    behind a proxy; the hosted smoke check cannot establish client-IP separation.
 9. Copy the new service's service ID and secret Deploy Hook URL from Settings. Also
    record the existing live service ID for the guard, without changing that service.
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
 
-Render automatically supplies [RENDER_GIT_COMMIT](https://render.com/docs/environment-variables).
-It rebuilds the pinned source with the same Dockerfile; this path does **not** promote
-the exact CI image digest. Bun image versions and dependencies are locked, but base
-image tags can change. Immutable registry-image promotion remains a future upgrade.
+Render Free sleep and SMTP restrictions mean this preview cannot establish always-on
+worker or email delivery reliability. Provider sandbox, frontend journeys and proxy
+client-IP separation remain later gates. See [Free limits](https://render.com/docs/free)
+and [Key Value](https://render.com/docs/key-value).
 
-## 4. Configure GitHub's preview environment
+## GitHub preview environment
 
+<<<<<<< HEAD
+In repository Settings > Environments, configure `preview` with deployment branch
+rules permitting only **isotrack-preview-branch**.
+=======
 In backend repo Settings → Environments → New environment, create `preview`.
 Under deployment branch rules, select only isotrack-preview-branch. Keep these secrets
 scoped to this environment. Do not place them in pull-request inputs.
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
 
 Environment secrets:
 
 | Name | Value |
 | --- | --- |
-| PREVIEW_DATABASE_URL | New empty Neon project's connection URL |
-| PREVIEW_REDIS_URL | Separate preview Redis/Key Value URL |
-| PREVIEW_FIXTURE_PASSWORD | New random password, at least 32 characters; stable across reruns |
-| RENDER_PREVIEW_DEPLOY_HOOK | New preview service's secret hook URL |
+| PREVIEW_DATABASE_URL | Complete URL for the new empty preview database |
+| PREVIEW_REDIS_URL | Separate preview Key Value internal URL |
+| PREVIEW_FIXTURE_PASSWORD | Stable random synthetic-account password, at least 32 characters |
 
 Environment variables:
 
 | Name | Value |
 | --- | --- |
-| PREVIEW_APP_URL | Preview HTTPS origin, e.g. https://your-preview.onrender.com |
+| PREVIEW_APP_URL | Preview HTTPS origin |
 | PREVIEW_APP_HOST | Preview backend hostname |
-| LIVE_APP_HOST | Live backend hostname |
-| PREVIEW_DATABASE_HOST | Preview DB hostname |
-| LIVE_DATABASE_HOST | Live DB hostname |
-| PREVIEW_REDIS_HOST | Preview Redis hostname |
+| LIVE_APP_HOST | Existing live backend hostname |
+| PREVIEW_DATABASE_HOST | Preview Neon endpoint hostname |
+| LIVE_DATABASE_HOST | Live Neon endpoint hostname |
+| PREVIEW_REDIS_HOST | Preview Key Value hostname |
 | LIVE_REDIS_HOST | Live Redis hostname |
-| RENDER_PREVIEW_SERVICE_ID | New preview service's srv-… ID |
-| RENDER_LIVE_SERVICE_ID | Existing live service's different srv-… ID |
+| PREVIEW_PREPARE_ENABLED | true, only after resource/configuration review |
 
-Copy preview URL/host/connection settings consistently between Render and GitHub.
-The fixture password is for synthetic smoke logins only; it need not be set on
-Render. The helper creates those accounts with bcrypt hashes in the preview DB.
-The live URL/passwords are never needed. Keep the fixture password unchanged unless
-you deliberately reset/update the disposable accounts through a separate process.
+The former PREVIEW_DEPLOY_ENABLED, deploy-hook secret and Render service ID variables
+are unused by this workflow. The fixture password need not be on Render. Existing
+fixtures are validated rather than having credentials overwritten automatically.
+No new allowed-action entries are needed.
 
-In Settings → Secrets and variables → Actions → Variables, add the **repository**
-variable PREVIEW_DEPLOY_ENABLED=true only after the above is complete. This flag
-must be repository-level because the job's condition is evaluated before loading
-the preview environment. No new allowed-action entries are used.
+On dev and pull requests, preparation is skipped and normal CI applies. On preview
+pushes, absent/false PREVIEW_PREPARE_ENABLED fails preparation and final checks,
+blocking automatic deployment. To pause deployments, also turn Render auto-deploy
+Off; changing a flag cannot revoke a deployment already triggered.
 
-## 5. Run and inspect the first release
+## Inspect preparation and verify the deployed release
 
+<<<<<<< HEAD
+Inspect Backend CI for the preview SHA: quality, every integration shard,
+preview_prepare and checks must succeed. The preparation artifact
+`backend-preview-preparation` contains `reports/preview-preparation.json` with SHA,
+passed status and fixture/migration counts; retention is 14 days. Early container or
+configuration failure may precede report creation: inspect the failed job's logs.
+A preparation failure may follow a successfully applied migration, so inspect the
+ledger before retrying. Do not bypass failed container checks.
+=======
 1. Push the next reviewed preview commit (an empty preview commit may deliberately trigger
    a run once setup is complete). Do not push main. Existing CI must pass first.
 2. Open Actions → Backend CI for that preview SHA. The preview job should run after
@@ -178,23 +207,41 @@ the preview environment. No new allowed-action entries are used.
 5. Set Render's health path to `/health/ready` after initial success. Open the preview
    /health/release endpoint and compare the SHA. This endpoint exposes only the
    environment and commit, not dependency URLs/secrets.
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
 
-No authenticating request is sent until release identity matches. Requests refuse
-redirects and live resource/service IDs. Smoke traffic makes up to 65 tracking
-requests with at most five in flight to verify 429/Retry-After; it is not a load
-benchmark. Wait at least one minute before rerunning to avoid an already exhausted
-tracking window. Repeated login tests also consume existing auth budgets. If a
-Render build is queued, the hook step fails explicitly so you can inspect it;
-do not blindly spam retries. A failed preparation step can have applied a valid
-migration before fixture validation failed; inspect history before retrying.
+After Render finishes deploying that SHA, use the preview checkout and a private,
+ignored `.env.preview` containing the isolation settings, fixture password and the
+exact RELEASE_SHA from the reviewed deployment. From the backend directory run:
 
-Container/Docker failures stop the job before DB migration. CI Docker boot checks
-use no network and prove only release/liveness startup, not Neon/Redis connectivity.
-Local Docker Hub DNS was unavailable during development, so this image gate remains
-unverified until a successful CI/container run. Do not bypass it to deploy.
+```sh
+bun --env-file=.env.preview run scripts/preview-release.mjs --verify-only
+```
+
+The script requires the preview branch, refuses redirects and checks matching
+preview environment/SHA plus readiness before submitting fixture credentials.
+It verifies four role logins, shipment/history access, foreign-tenant and anonymous
+denial, public privacy, body limits and tracking throttling. It creates sessions
+and consumes rate budgets but does not charge cards or send messages. Wait at least
+one minute between reruns. Reports contain statuses and SHA, not credentials/bodies.
+Inspect `reports/preview-smoke.json` for `passed: true` and record the CI run URL,
+SHA and Render deploy ID. Hook acceptance or a green build alone is not hosted proof.
+
+Local Docker image verification remains blocked by Docker Desktop DNS resolving
+production.cloudfront.docker.com. CI must prove container startup successfully.
+Local tests do not establish hosted Neon/Valkey behavior or million-user capacity.
 
 ## Stop and rollback
 
+<<<<<<< HEAD
+On failure, stop promotion and turn preview auto-deploy Off. Set preparation false
+before further preview pushes if preparation must be blocked. Never change main or
+the live service to repair preview. Use a recorded compatible preview commit for a
+manual application rollback, then verify its identity and smoke behavior separately.
+Application rollback does not undo migrations. Review expand/contract compatibility,
+retain isolated preview recovery points, and restore into a new preview database
+when needed. No automatic down migrations or destructive reset is provided.
+Hosted rollback/restore and provider journeys remain unverified release gates.
+=======
 Keep PREVIEW_DEPLOY_ENABLED=false until you are ready for another deployment. A
 running preview release is not auto-cancelled by a newer preview push; deployments are
 serialized. If an unexpected target, real provider traffic, failed smoke or schema
@@ -213,3 +260,4 @@ and restore into a new preview database if needed. Do not drop tables, reset the
 live database or run down migrations automatically. Synthetic preview data may be
 recreated deliberately; live backup/restore remains a separate gate. This runbook
 is not evidence that a hosted rollback or restore has been exercised.
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20

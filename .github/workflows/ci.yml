@@ -11,7 +11,11 @@ permissions:
 
 concurrency:
   group: backend-ci-${{ github.ref }}
+<<<<<<< HEAD
+  cancel-in-progress: ${{ github.ref != 'refs/heads/isotrack-preview-branch' }}
+=======
   cancel-in-progress: ${{ github.ref != 'refs/heads/isotrack-preview-branch' || vars.PREVIEW_DEPLOY_ENABLED != 'true' }}
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
 
 jobs:
   quality:
@@ -84,7 +88,7 @@ jobs:
           retention-days: 14
 
   checks:
-    needs: [quality, integration]
+    needs: [quality, integration, preview_prepare]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 2
@@ -93,20 +97,34 @@ jobs:
         env:
           QUALITY_RESULT: ${{ needs.quality.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
+          PREVIEW_RESULT: ${{ needs.preview_prepare.result }}
+          PREVIEW_REQUIRED: ${{ github.event_name == 'push' && github.ref == 'refs/heads/isotrack-preview-branch' }}
         run: |
           test "$QUALITY_RESULT" = success
           test "$INTEGRATION_RESULT" = success
+          if [ "$PREVIEW_REQUIRED" = true ]; then
+            test "$PREVIEW_RESULT" = success
+          else
+            test "$PREVIEW_RESULT" = skipped
+          fi
 
+<<<<<<< HEAD
+  preview_prepare:
+    needs: [quality, integration]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/isotrack-preview-branch' }}
+=======
   preview:
     needs: checks
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/isotrack-preview-branch' && vars.PREVIEW_DEPLOY_ENABLED == 'true' }}
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     environment: preview
     concurrency:
-      group: backend-preview-release
+      group: backend-preview-prepare
       cancel-in-progress: false
     env:
+      PREVIEW_PREPARE_ENABLED: ${{ vars.PREVIEW_PREPARE_ENABLED }}
       DEPLOYMENT_ENV: preview
       NODE_ENV: production
       RELEASE_SHA: ${{ github.sha }}
@@ -122,9 +140,6 @@ jobs:
       DATABASE_URL: ${{ secrets.PREVIEW_DATABASE_URL }}
       UPSTASH_REDIS_URL: ${{ secrets.PREVIEW_REDIS_URL }}
       PREVIEW_FIXTURE_PASSWORD: ${{ secrets.PREVIEW_FIXTURE_PASSWORD }}
-      RENDER_PREVIEW_SERVICE_ID: ${{ vars.RENDER_PREVIEW_SERVICE_ID }}
-      RENDER_LIVE_SERVICE_ID: ${{ vars.RENDER_LIVE_SERVICE_ID }}
-      RENDER_PREVIEW_DEPLOY_HOOK: ${{ secrets.RENDER_PREVIEW_DEPLOY_HOOK }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -135,21 +150,25 @@ jobs:
           bun-version: "1.3.12"
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
-      - name: Validate preview target before migration or deployment
-        run: node --input-type=module -e 'import {deployHook} from "./scripts/preview-release.mjs"; deployHook(process.env);'
+      - name: Validate preview branch, preparation switch and isolated resources
+        run: node --input-type=module -e 'import {assertPreviewPreparation} from "./src/lib/preview-isolation.ts"; assertPreviewPreparation(process.env);'
       - name: Build and boot isolated container
         run: |
           docker build --build-arg RELEASE_SHA="$GITHUB_SHA" --tag isotrack-preview-check .
           node scripts/check-preview-image.mjs isotrack-preview-check
       - name: Migrate and prepare only the isolated preview database
         run: bun run src/db/preview-prepare.ts
+<<<<<<< HEAD
+      - name: Retain preparation evidence
+=======
       - name: Deploy exact preview commit and verify hosted behavior
         run: node scripts/preview-release.mjs
       - name: Retain preview evidence
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
         if: ${{ always() }}
         uses: actions/upload-artifact@v6
         with:
-          name: backend-preview-release
-          path: reports/preview-release.json
+          name: backend-preview-preparation
+          path: reports/preview-preparation.json
           if-no-files-found: warn
           retention-days: 14

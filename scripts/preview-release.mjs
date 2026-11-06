@@ -1,34 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
 import { assertPreviewIsolation } from "../src/lib/preview-isolation.ts";
-
-export function deployHook(config) {
-  assertPreviewIsolation(config);
-  const id = config.RENDER_PREVIEW_SERVICE_ID,
-    live = config.RENDER_LIVE_SERVICE_ID;
-  if (
-    !/^srv-[a-z0-9]+$/.test(id ?? "") ||
-    !/^srv-[a-z0-9]+$/.test(live ?? "") ||
-    id === live
-  )
-    throw new Error("Separate Render service identities are required");
-  const hook = new URL(config.RENDER_PREVIEW_DEPLOY_HOOK);
-  if (
-    hook.protocol !== "https:" ||
-    hook.hostname !== "api.render.com" ||
-    hook.port ||
-    hook.username ||
-    hook.password ||
-    hook.hash ||
-    hook.pathname !== `/deploy/${id}` ||
-    !hook.searchParams.get("key") ||
-    [...hook.searchParams.keys()].some((k) => k !== "key")
-  )
-    throw new Error("Invalid preview deploy hook");
-  hook.searchParams.set("ref", config.RELEASE_SHA);
-  return hook;
-}
 
 export async function verifyPreview(
   config,
@@ -39,6 +13,11 @@ export async function verifyPreview(
   } = {},
 ) {
   assertPreviewIsolation(config);
+  if (
+    !config.PREVIEW_FIXTURE_PASSWORD ||
+    config.PREVIEW_FIXTURE_PASSWORD.length < 32
+  )
+    throw new Error("Preview fixture password is required");
   const origin = new URL(config.APP_URL).origin;
   const deadline = Date.now() + 600000;
   const request = (path, options = {}) => {
@@ -171,6 +150,9 @@ export function assertPreviewBranch(ref) {
 }
 
 async function main() {
+<<<<<<< HEAD
+  if (process.argv.slice(2).join(" ") !== "--verify-only")
+=======
   const config = process.env;
   assertPreviewBranch(config.GITHUB_REF);
   const hook = deployHook(config);
@@ -180,13 +162,25 @@ async function main() {
     signal: AbortSignal.timeout(15000),
   });
   if (response.status !== 200)
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
     throw new Error(
-      "Preview deploy was rejected or queued; inspect Render before retrying",
+      "Use --verify-only after Render deploys; this script does not deploy",
     );
+  const ref =
+    process.env.GITHUB_REF ??
+    `refs/heads/${execFileSync("git", ["branch", "--show-current"], { encoding: "utf8" }).trim()}`;
+  if (ref !== "refs/heads/isotrack-preview-branch")
+    throw new Error("Smoke verification must run from isotrack-preview-branch");
+  const config = {
+    ...process.env,
+    RELEASE_SHA:
+      process.env.RELEASE_SHA ??
+      execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+  };
   const result = await verifyPreview(config);
   await mkdir("reports", { recursive: true });
   await writeFile(
-    "reports/preview-release.json",
+    "reports/preview-smoke.json",
     JSON.stringify(
       { ...result, verifiedAt: new Date().toISOString() },
       null,
@@ -202,7 +196,7 @@ if (
   main().catch(async () => {
     await mkdir("reports", { recursive: true });
     await writeFile(
-      "reports/preview-release.json",
+      "reports/preview-smoke.json",
       JSON.stringify(
         {
           environment: "preview",
@@ -214,7 +208,7 @@ if (
       ) + "\n",
     );
     console.error(
-      "Preview release failed. Inspect Render and the preview runbook; no automatic database rollback was attempted.",
+      "Preview smoke verification failed. Inspect Render and the runbook; no deploy or database rollback was attempted.",
     );
     process.exitCode = 1;
   });
