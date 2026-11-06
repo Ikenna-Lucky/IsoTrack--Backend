@@ -11,7 +11,11 @@ permissions:
 
 concurrency:
   group: backend-ci-${{ github.ref }}
+<<<<<<< HEAD
   cancel-in-progress: ${{ github.ref != 'refs/heads/isotrack-preview-branch' }}
+=======
+  cancel-in-progress: ${{ github.ref != 'refs/heads/isotrack-preview-branch' || vars.PREVIEW_DEPLOY_ENABLED != 'true' }}
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
 
 jobs:
   quality:
@@ -104,9 +108,15 @@ jobs:
             test "$PREVIEW_RESULT" = skipped
           fi
 
+<<<<<<< HEAD
   preview_prepare:
     needs: [quality, integration]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/isotrack-preview-branch' }}
+=======
+  preview:
+    needs: checks
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/isotrack-preview-branch' && vars.PREVIEW_DEPLOY_ENABLED == 'true' }}
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     environment: preview
@@ -148,7 +158,13 @@ jobs:
           node scripts/check-preview-image.mjs isotrack-preview-check
       - name: Migrate and prepare only the isolated preview database
         run: bun run src/db/preview-prepare.ts
+<<<<<<< HEAD
       - name: Retain preparation evidence
+=======
+      - name: Deploy exact preview commit and verify hosted behavior
+        run: node scripts/preview-release.mjs
+      - name: Retain preview evidence
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
         if: ${{ always() }}
         uses: actions/upload-artifact@v6
         with:

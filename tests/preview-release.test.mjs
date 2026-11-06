@@ -5,7 +5,29 @@ import {
   assertPreviewPreparation,
 } from "../src/lib/preview-isolation.ts";
 import { createReleaseRouter } from "../src/observability/release.ts";
+<<<<<<< HEAD
 import { verifyPreview } from "../scripts/preview-release.mjs";
+=======
+import {
+  assertPreviewBranch,
+  deployHook,
+  verifyPreview,
+} from "../scripts/preview-release.mjs";
+
+test("only the dedicated preview branch can trigger preview deployment", () => {
+  assert.doesNotThrow(() =>
+    assertPreviewBranch("refs/heads/isotrack-preview-branch"),
+  );
+  for (const ref of [
+    undefined,
+    "refs/heads/isoTrack-dev-branch",
+    "refs/heads/main",
+    "refs/pull/1/merge",
+    "refs/tags/isotrack-preview-branch",
+  ])
+    assert.throws(() => assertPreviewBranch(ref));
+});
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
 
 const config = {
   DEPLOYMENT_ENV: "preview",

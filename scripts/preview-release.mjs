@@ -144,8 +144,25 @@ export async function verifyPreview(
   };
 }
 
+export function assertPreviewBranch(ref) {
+  if (ref !== "refs/heads/isotrack-preview-branch")
+    throw new Error("Preview release requires isotrack-preview-branch");
+}
+
 async function main() {
+<<<<<<< HEAD
   if (process.argv.slice(2).join(" ") !== "--verify-only")
+=======
+  const config = process.env;
+  assertPreviewBranch(config.GITHUB_REF);
+  const hook = deployHook(config);
+  const response = await fetch(hook, {
+    method: "POST",
+    redirect: "error",
+    signal: AbortSignal.timeout(15000),
+  });
+  if (response.status !== 200)
+>>>>>>> c012b51267fbef0a1fb797988f55f38c55230b20
     throw new Error(
       "Use --verify-only after Render deploys; this script does not deploy",
     );
