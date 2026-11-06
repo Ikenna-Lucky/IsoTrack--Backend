@@ -1383,3 +1383,23 @@ Render Free sleep/SMTP constraints are documented from official docs; this previ
 is not a production-availability or million-user capacity claim. Completion remains
 8.5/10 as a planning estimate. Production readiness and hosted preview readiness
 remain unverified until the missing gates pass.
+
+
+## 2026-11-06 — Dedicated preview branch
+
+The user selected their existing isotrack-preview-branch for preview deployments,
+replacing the earlier dev-deployment plan. It was one commit behind dev and was
+fast-forwarded from 7e2d9ef to ed9840d without creating a merge commit. Branch policy
+changes are now working-tree changes on preview: CI includes main/dev/preview,
+but the preview job, no-cancel release behavior and CLI deployment guard target
+only refs/heads/isotrack-preview-branch. The runbook now separates development,
+preview and unchanged main/live deployment roles.
+
+Seven targeted release-helper tests pass (0 failures/skips/todos/cancellations),
+including explicit denial of dev/main/PR/tag refs. No runtime/database change
+requires another integration run for this branch-policy edit. Before enabling
+the repository deploy flag, commit this policy and bring it back into dev so its
+older workflow does not still request a dev deployment; GitHub environment rules
+must allow only preview. No commit, push, remote branch creation, main change or
+hosted deployment was performed. Existing container DNS/hosted setup gates and
+8.5/10 planning estimate remain unchanged.

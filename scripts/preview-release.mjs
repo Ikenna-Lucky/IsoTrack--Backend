@@ -165,10 +165,14 @@ export async function verifyPreview(
   };
 }
 
+export function assertPreviewBranch(ref) {
+  if (ref !== "refs/heads/isotrack-preview-branch")
+    throw new Error("Preview release requires isotrack-preview-branch");
+}
+
 async function main() {
   const config = process.env;
-  if (config.GITHUB_REF !== "refs/heads/isoTrack-dev-branch")
-    throw new Error("Preview release requires the development branch");
+  assertPreviewBranch(config.GITHUB_REF);
   const hook = deployHook(config);
   const response = await fetch(hook, {
     method: "POST",

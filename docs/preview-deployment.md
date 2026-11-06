@@ -8,7 +8,7 @@ in the dashboards; never paste credentials into chat, commits or screenshots.
 ## What this preview proves
 
 The existing quality/integration/checks jobs must pass before the optional preview
-job runs on a push to isoTrack-dev-branch. That job validates isolation, builds and
+job runs on a push to isotrack-preview-branch. That job validates isolation, builds and
 boots a network-isolated Docker image, migrates/seeds only the preview database,
 triggers the preview service's secret hook with the exact commit, waits for matching
 release identity/readiness, and runs deployed smoke checks. Reports contain SHA,
@@ -33,9 +33,22 @@ and on free compute. Sources: [Free limits](https://render.com/docs/free),
 [deploy hooks](https://render.com/docs/deploy-hooks),
 [commit-specific deploys](https://render.com/docs/deploys).
 
-## 1. Commit and push only dev, with deployment disabled
+## Branch roles
 
-Review the changes and commit/push isoTrack-dev-branch as usual. Do not merge main.
+- `isoTrack-dev-branch`: ongoing backend development and CI.
+- `isotrack-preview-branch`: reviewed code selected for the separate preview service.
+- `main`: existing live deployment; no promotion is authorized yet.
+
+Configure Render and GitHub environment deployment rules for **isotrack-preview-branch**
+only. After committing this branch-policy change, bring it back into dev before
+turning on PREVIEW_DEPLOY_ENABLED, so dev no longer carries the older deployment
+rule. This does not require merging main. Future reviewed builds can be merged
+from dev into preview, then tested/deployed there. Do not force-push or reset a
+branch to synchronize it.
+
+## 1. Commit and push only preview, with deployment disabled
+
+Review the changes and commit/push isotrack-preview-branch as usual. Do not merge main.
 Leave repository variable PREVIEW_DEPLOY_ENABLED absent/false for now. CI discovers
 the new tests; preview is skipped. The workflow lives in existing ci.yml and uses
 push events, so no default-branch workflow_dispatch merge is necessary. Existing
@@ -75,7 +88,7 @@ See [Render Key Value](https://render.com/docs/key-value) and
 1. In Render choose New → Web Service and connect the backend GitHub repository.
    Create a separate service named isotrack-backend-preview (or another distinct
    available name). Do not edit the existing live service.
-2. Select branch **isoTrack-dev-branch**, runtime **Docker**, compute **Free**, the
+2. Select branch **isotrack-preview-branch**, runtime **Docker**, compute **Free**, the
    same region as the preview Key Value instance, Dockerfile `./Dockerfile`, context
    repository root. Leave Docker Command blank. Do not set pre-deploy commands or
    the old seed script. Do not attach live environment groups or disks.
@@ -114,7 +127,7 @@ image tags can change. Immutable registry-image promotion remains a future upgra
 ## 4. Configure GitHub's preview environment
 
 In backend repo Settings → Environments → New environment, create `preview`.
-Under deployment branch rules, select only isoTrack-dev-branch. Keep these secrets
+Under deployment branch rules, select only isotrack-preview-branch. Keep these secrets
 scoped to this environment. Do not place them in pull-request inputs.
 
 Environment secrets:
@@ -153,9 +166,9 @@ the preview environment. No new allowed-action entries are used.
 
 ## 5. Run and inspect the first release
 
-1. Push the next reviewed dev commit (an empty dev commit may deliberately trigger
+1. Push the next reviewed preview commit (an empty preview commit may deliberately trigger
    a run once setup is complete). Do not push main. Existing CI must pass first.
-2. Open Actions → Backend CI for that dev SHA. The preview job should run after
+2. Open Actions → Backend CI for that preview SHA. The preview job should run after
    checks. It validates target IDs/hosts before any migration or deployment.
 3. Inspect each step: container proof → preview migration/fixtures → hook → hosted
    smoke. Hook acceptance is not deployment success. The script waits up to ten
@@ -183,7 +196,7 @@ unverified until a successful CI/container run. Do not bypass it to deploy.
 ## Stop and rollback
 
 Keep PREVIEW_DEPLOY_ENABLED=false until you are ready for another deployment. A
-running preview release is not auto-cancelled by a newer dev push; deployments are
+running preview release is not auto-cancelled by a newer preview push; deployments are
 serialized. If an unexpected target, real provider traffic, failed smoke or schema
 incompatibility appears, stop promotion and inspect the new preview service only.
 
