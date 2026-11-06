@@ -48,18 +48,23 @@ export function postgresFixture(options = {}) {
         }
       }
     },
-    async query(statement) {
+    async query(statement, { prepared = false } = {}) {
       const compiled = dialect.sqlToQuery(statement);
-      // Fixture adapter only. Production Drizzle continues to bind parameters.
-      const text = compiled.sql.replace(/\$(\d+)/g, (_, index) => {
-        const value = compiled.params[Number(index) - 1];
+      const literal = (value) => {
         if (value === null) return "NULL";
         if (typeof value === "number" && Number.isFinite(value))
           return String(value);
         if (typeof value !== "string")
           throw new Error("Unsupported fixture parameter");
         return `'${value.replaceAll("'", "''")}'`;
-      });
+      };
+      // PREPARE checks parameter inference before EXECUTE supplies values, unlike
+      // literal substitution. Use it for production parameterization regressions.
+      const text = prepared
+        ? `PREPARE fixture_query AS ${compiled.sql}; EXECUTE fixture_query${compiled.params.length ? `(${compiled.params.map(literal).join(",")})` : ""}; DEALLOCATE fixture_query;`
+        : compiled.sql.replace(/\$(\d+)/g, (_, index) =>
+            literal(compiled.params[Number(index) - 1]),
+          );
       const process = execute(
         "docker",
         [

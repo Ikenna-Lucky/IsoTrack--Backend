@@ -1449,3 +1449,30 @@ hosted deployment was performed. Existing container DNS/hosted setup gates and
 8.5/10 planning estimate remain unchanged.
 
 > > > > > > > c012b51267fbef0a1fb797988f55f38c55230b20
+
+## 2026-11-06 — Fix hosted shipment-read parameter inference
+
+Render request 4a2c1af5-3c59-4aed-b8a3-32df2fce7e71 reported a database-category
+500 during preview smoke. Reproduced the shipment detail SELECT through Neon's
+HTTP driver in a read-only preview transaction: PostgreSQL 42P18, undetermined
+parameter type. No account/shipment data or credentials printed. JSON projection
+keys were bound without type context in variadic jsonb_build_object calls.
+
+Added explicit ::text casts to those keys, shared by detail/history/analytics.
+The corrected SELECT passed a read-only transaction against the same preview DB.
+This is query verification, not a deployed endpoint pass. No hosted data writes,
+migrations, commit, push or deployment performed.
+
+The PostgreSQL fixture now supports PREPARE/EXECUTE without predeclared types.
+Shipment detail/history/analytics HTTP test stores use this path, so parameter
+inference occurs before argument literals are supplied. Existing literal-only
+fixtures had masked this production-driver distinction. Nine shipment-read
+integration tests passed against disposable PostgreSQL 17 in 51.267 seconds,
+zero failures/skips/todos/cancellations; reports/shipment-parameter-types.xml.
+Lint, TypeScript and git diff --check passed. Other fixture callers retain their
+existing behavior. Work is on isoTrack-dev-branch; main/live untouched.
+
+Next: commit/push dev, promote through preview CI, deploy preview, update local
+expected release SHA and rerun complete hosted smoke. Existing deployed SHA remains
+2775e05975faf9deb1f1d9ddc252f66646823862 and has not received this fix.
+Completion remains 8.5/10 pending successful hosted functional verification.

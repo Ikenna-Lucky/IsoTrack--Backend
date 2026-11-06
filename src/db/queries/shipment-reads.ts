@@ -36,7 +36,7 @@ const camel = (key: string) =>
 function fields(alias: string, names: string[]) {
   return sql`jsonb_build_object(${sql.join(
     names.flatMap((name) => [
-      sql`${camel(name)}`,
+      sql`${camel(name)}::text`,
       sql`${sql.identifier(alias)}.${sql.identifier(name)}`,
     ]),
     sql`,`,
