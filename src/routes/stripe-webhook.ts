@@ -22,7 +22,7 @@ export function createStripeWebhookRouter(dependencies: Dependencies) {
     if (!signature) return c.text("Invalid signature", 400);
     let event: Stripe.Event;
     try {
-      event = Stripe.webhooks.constructEvent(
+      event = await Stripe.webhooks.constructEventAsync(
         await c.req.text(),
         signature,
         dependencies.secret,

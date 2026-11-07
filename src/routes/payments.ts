@@ -29,7 +29,7 @@ paymentsRouter.route(
   "/",
   createStripeWebhookRouter({
     secret: paymentLifecycle ? env.STRIPE_WEBHOOK_SECRET : undefined,
-    expectedLiveMode: /^(sk|rk)_live_/.test(env.STRIPE_SECRET_KEY ?? ""),
+    expectedLiveMode: false,
     parseSession: (session, paidAt) =>
       parseStripeSession(session, undefined, paidAt),
     confirm: confirmPayment,
@@ -80,10 +80,7 @@ paymentsRouter.get("/verify/:reference", async (c) => {
     return error(c, "Payment provider unavailable", 502);
   }
   const verified = parseStripeSession(session, reference);
-  if (
-    !verified ||
-    session.livemode !== /^(sk|rk)_live_/.test(env.STRIPE_SECRET_KEY ?? "")
-  )
+  if (!verified || session.livemode !== false)
     return error(c, "Invalid checkout response", 502);
   await paymentLifecycle!.observe(session);
   const [current] = await db

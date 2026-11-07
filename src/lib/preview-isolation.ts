@@ -1,3 +1,5 @@
+import { validateStripeConfig } from "./stripe-config.ts";
+
 export function assertPreviewPreparation(config: Record<string, unknown>) {
   if (config.GITHUB_REF !== "refs/heads/isotrack-preview-branch")
     throw new Error("Only the preview branch may prepare preview data");
@@ -29,8 +31,7 @@ export function assertPreviewIsolation(config: Record<string, unknown>) {
     ![false, "false"].includes(config.RETENTION_ENABLED as boolean | string)
   )
     throw new Error("Preview background work must be disabled");
-  if (config.STRIPE_SECRET_KEY || config.STRIPE_WEBHOOK_SECRET)
-    throw new Error("Initial preview must not use payment credentials");
+  validateStripeConfig(config);
   for (const [urlName, previewName, liveName, protocols] of [
     [
       "DATABASE_URL",

@@ -90,7 +90,7 @@ const notificationRuntime = env.NOTIFICATION_WORKERS_ENABLED
   ? startNotificationWorker()
   : { close: async () => {} };
 const paymentRuntime =
-  env.DEPLOYMENT_ENV !== "preview"
+  env.STRIPE_MODE === "sandbox"
     ? startPaymentReconciliation()
     : { close: async () => {} };
 const retentionRuntime = startRetention();

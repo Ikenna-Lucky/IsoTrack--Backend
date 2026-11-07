@@ -40,7 +40,7 @@ test("preview preparation fails closed until enabled and never accepts dev/main/
   ])
     assert.throws(() => assertPreviewPreparation({ ...ready, ...change }));
 });
-test("preview isolation refuses live resource aliases, workers, unknown releases and payment credentials", () => {
+test("preview isolation refuses live resource aliases, workers, unknown releases and implicit payment credentials", () => {
   assert.doesNotThrow(() => assertPreviewIsolation(config));
   for (const change of [
     { DEPLOYMENT_ENV: "production" },

@@ -5,12 +5,31 @@ backend creates the session and the frontend redirects to its hosted URL. No
 publishable key, Stripe.js script, product ID or price ID is needed for this flow.
 Amounts remain NGN minor units (kobo); no currency conversion is performed.
 
+## Portfolio payment policy
+
+The public portfolio deployment will continue to use Stripe sandbox payments.
+Public hosting and `NODE_ENV=production` do not imply real-money processing.
+`STRIPE_MODE` defaults to `disabled`; credentials alone do not activate payments.
+Selecting `sandbox` requires a test server key (`sk_test_` or `rk_test_`) and its
+webhook signing secret (`whsec_`). Live keys and live-mode configuration are
+rejected in local, preview and production environments. The client, Checkout
+validation, payment reconciliation and signed callbacks require `livemode=false`.
+Key prefixes validate configuration shape, not key authenticity or sandbox identity;
+actual provider verification remains necessary. The API key and webhook secret
+must belong to the same sandbox and destination.
+
+Sandbox mode also enables the existing bounded payment reconciliation loop in
+preview. Notification workers and automatic retention remain disabled. The loop
+uses PostgreSQL leases and at most two provider operations concurrently per process.
+CI preview preparation stays disabled for Stripe and needs no provider secrets.
+
 ## Dashboard and environment setup
 
 Select a Stripe sandbox and obtain a secret API key from
 [API keys](https://dashboard.stripe.com/apikeys). Configure the backend `.env`:
 
 ```dotenv
+STRIPE_MODE=sandbox
 STRIPE_SECRET_KEY=sk_test_REPLACE_ME
 STRIPE_WEBHOOK_SECRET=whsec_REPLACE_ME
 FRONTEND_URL=http://localhost:3000
@@ -28,7 +47,42 @@ Subscribe to:
 For deployment set its public HTTPS URL to
 `https://YOUR_API_HOST/api/v1/payments/webhook`. Reveal that endpoint's signing
 secret and set `STRIPE_WEBHOOK_SECRET`. This secret is separate from the API key.
-Use keys and webhook destinations from the same sandbox or live environment.
+Use keys and webhook destinations from the same sandbox.
+
+For the existing Render preview, first deploy this configuration build with Stripe
+still disabled. Then save these three values together on the preview Web Service:
+`STRIPE_MODE=sandbox`, the private test `STRIPE_SECRET_KEY` and that destination's
+`STRIPE_WEBHOOK_SECRET`. Save/redeploy and confirm `/health/ready` and the release
+SHA. Do not add these provider secrets to GitHub preview preparation or its smoke
+configuration; preparation and read-only smoke do not require them.
+
+The public portfolio service can use the same sandbox mode later, with a webhook
+pointing to that service. Keep its Stripe sandbox separate from preview where
+available so testing cannot modify demo payment records. No Connect, subscriptions,
+live activation or live keys are required for this portfolio payment policy.
+
+## Actual provider verification (pending)
+
+After deployment/configuration, create Checkout through the application's payment
+endpoint for a synthetic shipment, preserving the Idempotency-Key on retries.
+Open the returned Stripe-hosted URL and use Stripe's documented test card values.
+Check the corresponding sandbox event delivery reaches the registered preview
+webhook with HTTP 200, then read the shipment/payment state and confirm exactly one
+applied receipt. Repeat delivery of the same event through Stripe Dashboard and
+verify no duplicate effects. A fabricated CLI event without the application's
+session/reference does not establish settlement correctness.
+
+Also exercise a declined test payment, unpaid session expiration, reconciliation
+and the supported review/refund path. The current operator refund command only
+handles additional-money review balances; applied-payment/partial refunds and
+disputes still require their own product policy. Record the release SHA, synthetic
+reference/session/event IDs, HTTP results and receipt counts without secrets,
+card data, login tokens or Checkout URLs in shareable reports. Reconciliation or
+`/verify` can also settle a payment, so a paid database flag alone does not prove
+successful provider webhook delivery: inspect the actual Stripe delivery record.
+
+Official [sandbox test cards](https://docs.stripe.com/testing) simulate payments
+without moving money. This provider exercise is not a load test.
 
 For local development, install the Stripe CLI, log in, and run:
 

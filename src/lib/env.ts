@@ -2,6 +2,7 @@ import { z } from "zod";
 import { tokenDurationSeconds } from "./token-duration";
 import { trustedProxyAddresses } from "./request-peer";
 import { assertPreviewIsolation } from "./preview-isolation";
+import { validateStripeConfig } from "./stripe-config";
 
 const tokenLifetime = z.string().refine((value) => {
   try {
@@ -93,10 +94,23 @@ const envSchema = z
     TWILIO_ACCOUNT_SID: z.string().optional(),
     TWILIO_AUTH_TOKEN: z.string().optional(),
     TWILIO_PHONE_NUMBER: z.string().optional(),
+    STRIPE_MODE: z.enum(["disabled", "sandbox"]).default("disabled"),
     STRIPE_SECRET_KEY: z.string().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
   })
   .superRefine((value, context) => {
+    try {
+      validateStripeConfig(value);
+    } catch (error) {
+      context.addIssue({
+        code: "custom",
+        path: ["STRIPE_MODE"],
+        message:
+          error instanceof Error
+            ? error.message
+            : "Invalid Stripe configuration",
+      });
+    }
     if (value.DEPLOYMENT_ENV === "preview") {
       try {
         assertPreviewIsolation(value);
@@ -105,7 +119,7 @@ const envSchema = z
           code: "custom",
           path: ["DEPLOYMENT_ENV"],
           message:
-            "Preview requires isolated hosts, a release SHA, disabled workers/retention and no payment credentials",
+            "Preview requires isolated hosts, a release SHA, disabled notification workers/retention and valid sandbox payment settings",
         });
       }
     }
