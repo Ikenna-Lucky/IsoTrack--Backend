@@ -8,7 +8,7 @@ export const writes = createIdempotentWrites({
   store: writeStore,
   frontendUrl: env.FRONTEND_URL,
   providerContext: stripeContext,
-  liveMode: /^(sk|rk)_live_/.test(env.STRIPE_SECRET_KEY ?? ""),
+  liveMode: false,
   createCheckout: client
     ? (params, key) =>
         client.checkout.sessions.create(params, { idempotencyKey: key })

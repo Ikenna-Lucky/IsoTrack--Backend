@@ -18,6 +18,7 @@ const env = {
   NODE_ENV: "production",
   NOTIFICATION_WORKERS_ENABLED: "false",
   RETENTION_ENABLED: "false",
+  STRIPE_MODE: "disabled",
   APP_URL: "https://preview-app.invalid",
   FRONTEND_URL: "https://preview-app.invalid",
   PREVIEW_DATABASE_HOST: "preview-db.invalid",

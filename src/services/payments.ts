@@ -1,5 +1,4 @@
 import { stripe, stripeContext } from "../lib/stripe";
-import { env } from "../lib/env";
 import { writeStore } from "./write-store";
 import { createPaymentLifecycle } from "./payment-lifecycle";
 import { telemetry } from "../observability/telemetry";
@@ -10,7 +9,7 @@ export const paymentLifecycle = stripe
       client: stripe,
       store: writeStore,
       providerContext: stripeContext,
-      liveMode: /^(sk|rk)_live_/.test(env.STRIPE_SECRET_KEY ?? ""),
+      liveMode: false,
     })
   : null;
 

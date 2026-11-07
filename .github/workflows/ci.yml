@@ -120,6 +120,7 @@ jobs:
       RELEASE_SHA: ${{ github.sha }}
       NOTIFICATION_WORKERS_ENABLED: "false"
       RETENTION_ENABLED: "false"
+      STRIPE_MODE: disabled
       APP_URL: ${{ vars.PREVIEW_APP_URL }}
       PREVIEW_APP_HOST: ${{ vars.PREVIEW_APP_HOST }}
       LIVE_APP_HOST: ${{ vars.LIVE_APP_HOST }}

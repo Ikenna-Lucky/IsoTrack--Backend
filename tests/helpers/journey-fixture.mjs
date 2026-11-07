@@ -14,7 +14,7 @@ const exec = promisify(execFile);
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const dialect = new PgDialect();
 
-export function journeyFixture() {
+export function journeyFixture({ stripe } = {}) {
   const suffix = randomUUID();
   const containers = [];
   const logs = [];
@@ -130,6 +130,20 @@ export function journeyFixture() {
             if (body.length > 1048576)
               throw new Error("Oversized fixture query");
           }
+          if (request.url.startsWith("/stripe/")) {
+            if (!stripe) throw new Error("No Stripe fixture configured");
+            const result = await stripe({
+              path: request.url.slice("/stripe".length),
+              method: request.method,
+              body,
+              headers: request.headers,
+            });
+            response.writeHead(result.status ?? 200, {
+              "Content-Type": "application/json",
+            });
+            response.end(JSON.stringify(result.body));
+            return;
+          }
           const input = JSON.parse(body);
           client = await pool.connect();
           const batch = Array.isArray(input.queries);
@@ -217,6 +231,14 @@ export function journeyFixture() {
             GMAIL_USER: "disabled@example.invalid",
             GMAIL_APP_PASSWORD: "disabled-fixture-only",
             DELIVERY_CODE_SECRET: this.deliverySecret,
+            STRIPE_MODE: stripe ? "sandbox" : "disabled",
+            ...(stripe
+              ? {
+                  STRIPE_SECRET_KEY: "sk_test_journey_fixture",
+                  STRIPE_WEBHOOK_SECRET: "whsec_journey_fixture",
+                  JOURNEY_STRIPE_FIXTURE: "true",
+                }
+              : {}),
             JOURNEY_DATABASE_ENDPOINT: endpoint,
           },
           stdio: ["ignore", "pipe", "pipe"],

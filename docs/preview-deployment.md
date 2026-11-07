@@ -59,7 +59,11 @@ initiate an initial deployment outside the later auto-deploy sequence.
 
 Use `.env.preview.example` for runtime settings, replacing placeholders privately.
 Use separate preview JWT secrets, preview database and separate preview Key Value
-URL. Keep notification workers and retention disabled and Stripe credentials blank.
+URL. Keep notification workers and retention disabled. Stripe defaults to disabled
+with credentials blank. After deploying sandbox support, explicitly select
+`STRIPE_MODE=sandbox` and supply both test credentials to exercise payments; live
+keys remain forbidden. This also enables bounded payment reconciliation in preview.
+See [payments.md](payments.md) for setup and the separate provider verification gate.
 Do not manually set RELEASE_SHA: the Docker entrypoint uses Render's build commit.
 Keep TRUSTED_PROXY_IPS blank until exact immediate proxy/header behavior is verified.
 

@@ -1549,3 +1549,48 @@ hosted database, provider call or deployment performed. Planning estimate advanc
 to 8.8/10. Next release gates include remote CI for the new journeys, actual provider
 sandbox/worker delivery, deployed monitoring/alert delivery and hosted recovery
 rehearsal. Production readiness remains unverified beyond the evidenced scope.
+
+## 2026-11-07 — Explicit sandbox-only Stripe configuration and Bun webhook fix
+
+User clarified that the eventual public portfolio deployment will also retain
+Stripe sandbox/test keys. Live payment activation is not a release requirement
+for this portfolio scope. Sandbox selected, credentials saved privately and
+snapshot webhook API version 2026-10-28.endive confirmed by the user; credential
+values have not been read or copied by this build.
+
+PR-07/10/11/16: added STRIPE_MODE=disabled|sandbox, default disabled, with paired
+server test-key/signing-secret validation. Credentials alone cannot enable payments;
+live keys/modes are rejected in local, preview and production settings. Preview
+resource guards remain intact. Explicit sandbox mode enables the existing bounded
+payment reconciliation loop in preview; notification workers/retention remain off.
+CI preparation/container proof explicitly disable Stripe and receive no credentials.
+SDK uses its supported fetch transport; Checkout/provider/webhook mode checks are
+pinned to false rather than inferred as live from credentials. API version unchanged.
+
+The real Bun entrypoint integration initially rejected valid signed events (400).
+A synthetic runtime reproduction confirmed synchronous Stripe verification fails
+in Bun while constructEventAsync succeeds. Switched the handler to asynchronous
+verification; no signature/timestamp/mode checks were removed. Initial failed
+integration report retained as reports/stripe-sandbox-initial-failure.xml.
+
+Final verification: 84/84 fast tests passed in 3.835 seconds, zero failures/skips/
+todos/cancellations. Six assembled scenarios passed in 23.119 seconds: three
+payment cases plus the three existing delivery journeys. Tests exercise actual
+Bun/HTTP/auth/SDK/signature/PostgreSQL/Redis wiring; local Stripe HTTP fixture covers
+Checkout replay, unknown provider outcomes with the same immutable provider key,
+public signed settlement/replay, live-event and missing-signature rejection,
+unauthorized verification, forged redirect parameters, unpaid expiration and a
+new attempt after guard release. Report counts validated from JUnit; XML/JSON
+in reports/stripe-sandbox.*, fast evidence in reports/unit.*. Lint, TypeScript,
+Bun build (959 modules, 3.59 MB), workflow YAML validation and diff checks passed.
+No migration or schema change.
+
+Boundaries: vendor HTTP/Neon edge are simulated; real Stripe sandbox Checkout,
+provider event delivery, declined cards, reconciliation and supported review/refund
+exercise remain pending after the user deploys and configures Render. A paid DB
+flag alone cannot prove webhook delivery because reconciliation/verify may settle
+it too. Actual Stripe Dashboard delivery results must be recorded. Applied/partial
+refund policy and disputes remain outside the existing review-refund command.
+No frontend change, actual provider call, hosted write, commit, push, main change
+or deployment performed. docs/payments.md explains setup and remaining evidence.
+Completion remains 8.8/10 while actual provider verification is pending.
