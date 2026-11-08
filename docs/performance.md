@@ -127,3 +127,62 @@ failed report is preserved as reports/load-smoke-seed-timeout.json. Setup now ha
 its own deadline without relaxing measured request deadlines or latency limits.
 The local reports have commit=null. The new manual workflow has not been run on
 GitHub. Hosted transport, longer runs, skewed data and maximum capacity remain open.
+
+## Bounded hosted preview baseline — 2026-11-08
+
+Manual command: `npm run test:load:hosted -- FULL_PREVIEW_RELEASE_SHA`.
+Requires Node 24 and the existing ignored .env.preview. It accepts only the known
+preview origin, applies resource-isolation guards and checks deployed environment
+and exact SHA before authentication or synthetic writes. No provider credentials
+are used, no payment endpoint is invoked, and no service settings are changed.
+The original local benchmark remains unchanged and accepts no external URL.
+
+This deliberately small profile offers warmup 0.5 operations/s for 10s, steady
+1/s for 30s, burst 2/s for 15s and recovery 1/s for 20s, with at most four in flight.
+Its ten-operation cycle is seven shipment reads (including one tenant denial),
+two public tracking reads and one write operation. Each write creates/replays a
+new synthetic shipment and cancels/replays it, making four HTTP requests. Four
+serial real fixture logins are sampled separately, not a login-capacity benchmark.
+Small phase sizes have mix rounding; inspect actual counts. No backlog is unbounded.
+No requests use existing shipments for authorized state changes.
+
+Predeclared targets: login p95 <=3000ms; read/tracking operation p95 <=2000ms;
+write operation (four HTTP calls) p95 <=6000ms; no failed operations or dropped
+arrivals. Request deadline is 10s. Server errors, 429, transport/timeouts or other
+request failures stop further traffic; in-flight requests may finish. Later
+phases are omitted after failures/drops. A failing latency result is not relabeled
+as a pass. Shared application request budgets are not disabled or reset.
+
+Reports/hosted-load-RUN_ID.json retains release, dataset size, actual request and
+operation statistics, generator accounting, latency/error thresholds and created
+shipment IDs. Future request records include sanitized route, UTC start and server
+request ID where available; no response body, token or password is retained.
+Read-only SQL samples database connection counts before/after phases, including
+the observer; these are not peaks, connection-pool capacity or saturation evidence.
+Render CPU/memory must be recorded separately from dashboard graphs. The user's
+reported 0.15 CPU and 512MB are limits, not observed utilization.
+
+Actual run d251e4d2-ad73-4bd2-a4c7-36d937a0a249 against preview release
+e1601f41d7245ca4c350db3ed149e43d4b5264f3 FAILED. Dataset at start: six shipments,
+two businesses, four users. There were 53 HTTP attempts, including setup, with two
+10s GET timeouts during steady 1 operation/s. Warmup: 5/5 operations completed with
+no failures/drops. Steady: 30 arrivals, 28 successful operations, two failures,
+zero drops. Burst/recovery not run. Four-login p95 3021.9ms exceeded 3000ms.
+Successful steady reads p95 907.7ms, tracking p95 1214.2ms, four-call writes p95
+2545.5ms. Successful-only percentiles do not erase the failed requests.
+
+Read-only follow-up reports/hosted-load-diagnosis.json confirms all four synthetic
+shipments cancelled at version 1 with two events each, and health live/ready both
+200. Comparing preview payments with the already restored baseline found only
+updated_at/reconcile_after differences on one payment, not financial differences.
+The initial full-row financial hash incorrectly counted normal reconciliation
+scheduling as drift; the checker now selects durable financial/audit fields.
+This correction does not resolve the two actual HTTP timeouts or the login target.
+The failed report remains unchanged, and no second hosted load run was performed.
+
+Two load-engine regression tests pass, formatting and ESLint pass. No application
+runtime code changed or deployed. Need Render logs/request durations and actual
+CPU/memory around Nov 8 15:19–15:21 Africa/Lagos to distinguish endpoint/dependency
+latency from runner/network effects. Do not increase load until diagnosed. This
+small run establishes neither a passing hosted baseline nor capacity for a
+representative dataset, a free-tier ceiling or millions of users.

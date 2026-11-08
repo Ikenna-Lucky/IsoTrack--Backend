@@ -1954,3 +1954,33 @@ code is unchanged. Backend planning estimate 9.3/10. Render ingress/cutover,
 provider side-effect reconciliation, bulk session invalidation, independent backup
 storage/scheduling, hosted alert confirmation and representative capacity remain
 separate gates. This is not proof of a complete production disaster recovery.
+
+## 2026-11-08 — Initial hosted performance baseline failed
+
+Added an opt-in bounded hosted-load command separate from the local benchmark.
+Exact preview release/environment and isolation guards precede traffic. Profile
+0.5/1/2/1 operations per second, maximum four in flight; no request-budget bypass,
+provider requests, deployments or main changes. Real Render/Neon/Redis stack,
+with client-side latency including this machine's internet path.
+
+Executed against e1601f41d7245ca4c350db3ed149e43d4b5264f3 with existing six-shipment,
+two-business/four-user dataset. Report hosted-load-d251e4d2-ad73-4bd2-a4c7-36d937a0a249.json:
+53 HTTP attempts; warmup 5 successful operations, steady 28 successful and two
+10-second GET timeouts, zero dropped arrivals. Burst and recovery intentionally
+not run. Four serial login samples p95 3021.9ms exceeded the predeclared 3000ms.
+Successful steady read/tracking/write p95 907.7/1214.2/2545.5ms; these do not
+cancel timeout failures. No successful capacity baseline or saturation claim.
+
+Read-only diagnosis report hosted-load-diagnosis.json: health/live and ready 200,
+four new synthetic shipments cancelled with version 1/two events each. Payment
+comparison against restored baseline differed only in updated_at/reconcile_after
+on one row. Fixed the harness's over-broad financial comparison for future runs;
+original report remains failed. Added route/time/request-ID diagnostics for future
+attempts. No threshold relaxed and no hosted re-run after the checker correction.
+
+Two engine tests passed; formatting and ESLint pass for the new script. Resource
+samples include only post-phase database connection counts, not peak usage. User
+provided service limits (0.15 CPU, 512MB), not actual graph measurements; Render
+logs/utilization around Nov 8 15:19–15:21 Africa/Lagos remain needed to attribute
+timeouts. Backend estimate stays 9.3/10. Performance gate remains FAILED for this
+profile; do not raise load or describe the free deployment as proven scalable.
