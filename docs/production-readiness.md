@@ -8,7 +8,7 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **8.8/10** after local regression, performance baselines, retention, shipment read privacy, public tracking/history, shared request-protection checks and preview release tooling
+Current completion estimate: **9.2/10** after local regression, performance baselines, retention, shipment read privacy, public tracking/history, shared request-protection checks and preview release tooling
 (2026-11-06). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
@@ -1594,3 +1594,322 @@ refund policy and disputes remain outside the existing review-refund command.
 No frontend change, actual provider call, hosted write, commit, push, main change
 or deployment performed. docs/payments.md explains setup and remaining evidence.
 Completion remains 8.8/10 while actual provider verification is pending.
+
+
+## 2026-11-07 — Actual Stripe sandbox Checkout prepared
+
+Preview release e1601f41d7245ca4c350db3ed149e43d4b5264f3 reports preview identity and ready. Used the
+private existing fixture login to create one synthetic NGN 250000-kobo shipment
+and initialize actual Stripe-hosted Checkout through the deployed backend. Test
+session cs_test_a1YaA3Rsuw0LUPjJCL5UpL77XHxJtwDKhZuQ8VSrXOqIUaZwuzYlIoBVWM; reference IST-PAY-zOlk1YDImz82LeE0Ncz-L67n. Stable UUID-based
+idempotency keys and run state are stored in ignored .verification files for safe
+retry. No Stripe API/signing secret read, no card submitted, no live service changed.
+Checkout URL remains private and is omitted from shareable evidence. Report:
+reports/stripe-provider.json, status awaiting_test_card_completion, passed=false.
+
+User must complete the hosted page with a documented test card, then we must inspect
+actual event delivery and verify durable settlement/replay. Initialization alone
+does not prove successful payment or webhook delivery. Completion remains 8.8/10.
+
+## 2026-11-07 — Actual sandbox settlement verified, webhook evidence pending
+
+User completed the Stripe-hosted test Checkout and reached the expected unimplemented
+frontend return path /customer/shipments, which returned the backend's safe 404.
+No frontend route was added; that redirect is not payment evidence.
+
+For preview release e1601f41d7245ca4c350db3ed149e43d4b5264f3 and reference
+IST-PAY-zOlk1YDImz82LeE0Ncz-L67n, authenticated shipment GET plus a Neon read-only
+transaction confirm is_paid=true, payment status success, checkout_state settled,
+NGN 250000-kobo amount and matching test session, exactly one payment, exactly one
+shipment receipt and receipt/payment linkage. Verification intentionally did not
+invoke /payments/verify or operator reconciliation. No payment retry/second charge,
+provider mutation, raw card data, credentials or login tokens printed/stored.
+
+reports/stripe-provider.json records settlement passed but overall passed=false:
+actual provider webhook delivery status/event ID requested from the user's Stripe
+Dashboard, then provider event resend and unchanged receipt count remain pending.
+Background reconciliation can settle too, so settlement alone is not attributed to
+a webhook. Failed/expired sandbox and supported refund/reconciliation provider cases
+remain subsequent verification work. Completion remains 8.8/10 pending these gates.
+
+
+## 2026-11-07 — Actual sandbox webhook resend verified
+
+User reports initial checkout.session.completed delivery HTTP 200 in Stripe Dashboard
+and confirms resending the same event. Event ID was not supplied; delivery status
+is user-provided evidence, not independently fetched from Stripe. After resend,
+authenticated shipment read and a read-only Neon transaction confirm the same
+250000-kobo test payment remains success/settled, shipment is_paid=true, exactly
+one payment and one matching receipt. No /verify or reconciliation command invoked,
+no new charge/card submission or provider mutation by this verification.
+
+reports/stripe-provider.json passes only the scoped successful-payment/duplicate
+resend exercise. Declined card, expired session/retry, actual reconciliation and
+supported review-refund cases remain pending. Public portfolio payment mode remains
+sandbox-only. Planning estimate advances to 8.9/10; overall production readiness
+is not established. No commit, push, main change or deployment performed.
+
+Declined-card case prepared as a separate synthetic shipment/Checkout: reference
+IST-PAY-oGYL57wFB6QVfd13NF8FMFxK, session cs_test_a1AF1IkVocY91scKC3hb7y61061AxdpNgh2zRHKtFHZ1PiQNc26iJs3qP0.
+User test-card submission and unpaid-state verification pending; evidence in
+reports/stripe-provider-decline.json. Checkout URL and stable keys remain private
+in .verification. The successful-payment run is preserved separately.
+
+
+## 2026-11-07 — Actual sandbox decline, expiry and retry verified
+
+User observed Stripe Checkout card-decline feedback for the separate synthetic
+reference IST-PAY-oGYL57wFB6QVfd13NF8FMFxK. Authenticated shipment read and a
+read-only Neon transaction confirmed is_paid=false, one pending/open attempt,
+no received payment, no successful payment and zero receipts; one active guard
+correctly preserves the still-open Checkout. A declined card does not itself
+close the Checkout session. No API key or card values were read from the browser.
+
+Called the preview authenticated cancellation endpoint for this exact test reference.
+It retrieved/expired the provider session through the production reconciliation
+code, returned HTTP 200 and expired state. A fresh read-only transaction confirmed
+unpaid status, zero receipts and guard release. Reusing the original checkout key
+returned 409. A distinct retry key created a different actual cs_test_ session via
+HTTP 200; database now has two legitimate attempts (old expired, new open), one
+active guard, unpaid shipment and zero receipts. No card submitted for the new
+attempt. This is an operator-requested expiry, not a natural time-expiry rehearsal
+or independent proof of checkout.session.expired webhook delivery.
+
+Evidence: reports/stripe-provider-decline.json with separate decline/expiration/
+retry results; private .verification run state preserves the replacement URL/keys.
+The successful-payment/replay report remains separate. Actual API/provider actions
+were confined to synthetic preview data and Stripe sandbox. No live/main change,
+source behavior change, credentials printed, commit, push or deployment performed.
+
+Planning estimate advances to 9.0/10. Actual supported review/refund and interrupted
+settlement recovery evidence, deployed monitoring/alert delivery, hosted recovery,
+frontend adoption and capacity remain outstanding; no overall readiness claim.
+
+
+## 2026-11-07 — Corrected actual webhook-resend chronology
+
+User clarified the earlier claimed resend had not yet occurred. Therefore the
+earlier database check did not establish post-resend behavior. User has now
+performed the actual resend and reports two HTTP 200 deliveries and one Stripe
+transaction. Rechecked the original successful reference
+IST-PAY-zOlk1YDImz82LeE0Ncz-L67n afterward using authenticated shipment GET and
+a read-only preview database transaction: payment success, Checkout settled,
+shipment paid, exactly one payment and one matching receipt. No reconciliation,
+new Checkout or charge was invoked by this check. reports/stripe-provider.json
+now records this corrected sequence and fresh checkedAt timestamp. Provider
+delivery/transaction counts remain user-reported; database counts independently
+verified. This entry supersedes the earlier resend timing assertion. Planning
+estimate remains 9.0/10; overall readiness remains subject to outstanding gates.
+
+
+## 2026-11-07 — Automatic reconciliation recovery exercise prepared
+
+Created a separate synthetic preview shipment and actual Stripe test Checkout for
+reference IST-PAY-PZELZby0b7krIQJDcsSkm0vG, session cs_test_a1erM8iJQVYu9BqLuOpS8T7VEVs6qiAYR13Zn3dNDrkXU9wkYSn6VJhm8M,
+on release e1601f41d7245ca4c350db3ed149e43d4b5264f3. A read-only baseline confirms one pending/open
+payment, unpaid shipment and zero receipts, and records reconcile_after. Evidence:
+reports/stripe-provider-recovery.json (passed=false; awaiting sandbox destination
+disable and user test-card completion). No card submitted or webhook destination
+changed by the agent. Existing successful/decline exercises remain separate.
+
+Next user action: temporarily disable only ISOTrack Preview Payments in the Stripe
+sandbox (preserve destination/secret); confirm before paying. Then complete this
+test Checkout while destination remains disabled. Observe only read-only database
+state and health; do not invoke /payments/verify, operator reconcile or replay
+webhooks while attributing recovery to the scheduled loop. The loop ticks every
+30 seconds and schedules attempted payments five minutes ahead; allow that bound
+and account for Render Free sleep. Request user evidence that no callback was
+delivered for this session. Re-enable the same destination after observation and
+confirm restoration. Do not leave the exercise marked complete before restoration.
+Planning estimate remains 9.0/10; recovery behavior is not yet verified.
+
+
+## 2026-11-07 — Scheduled recovery observed; webhook restoration pending
+
+User confirmed preview webhook destination disabled, then completed recovery test
+Checkout for reference IST-PAY-PZELZby0b7krIQJDcsSkm0vG. Observer used only exact release
+health GET and read-only Neon transactions, never /payments/verify, operator
+reconcile, replay or direct database writes. Post-payment observations at
+16:38:45.715Z, 16:39:45.139Z and 16:40:56.157Z retained pending/open status, unpaid
+shipment, one attempt and zero receipts. At 16:41:37.656Z the same payment was
+success/settled, shipment paid, exactly one payment and one matching receipt.
+Reconciliation schedule advanced to 16:46:26.089Z, consistent with the worker's
+30-second scan and five-minute per-payment schedule. No new Checkout/card retry
+was initiated. Amount/session binding verified by the observation script.
+
+reports/stripe-provider-recovery.json marks recovery outcome passed, overall
+passed=false until user confirms the destination stayed disabled throughout and
+re-enables it. Destination state is user-reported, not fetched independently from
+Stripe. Do not attribute this exercise to natural provider outage or guaranteed
+always-on availability on Render Free. No code change/commit/push/deployment.
+Completion remains 9.0/10 until fault restoration is confirmed.
+
+
+## 2026-11-07 — Recovery fault restored and exercise closed
+
+User explicitly confirms ISOTrack Preview Payments stayed disabled throughout
+the successful test payment and scheduled settlement observation, then re-enabled
+the same destination. Report reports/stripe-provider-recovery.json now passes the
+scoped automatic reconciliation recovery exercise and records user-reported fault
+restoration. Destination state has not been independently read from Stripe.
+
+The observed pending-to-settled transition, updated reconciliation schedule and
+one matching receipt were independently verified through read-only database
+queries without a manual settlement endpoint. No new source behavior, migration,
+provider mutation by agent, commit, push, main change or deployment in this step.
+Planning estimate advances to 9.1/10; actual supported review/refund verification,
+deployed monitoring/alert delivery, hosted recovery and other documented release
+gates remain outstanding. This is not an overall production-readiness verdict.
+
+
+## 2026-11-07 — Review/refund exercise preparation
+
+Inspected recordRefund: supported scope includes received review balances caused
+by shipment_not_payable, not just additional_payment. Existing successful test
+payments remain unchanged. Prepared a separate synthetic Checkout/reference
+IST-PAY-Ba4RbMuI_C-E5estsGCIzwyn, session cs_test_a145NXyF4tlZNT9yXf7b7f4FYVOwrhKIPHqrgvD3f09VQqO5h5LdZPkdry,
+on preview e1601f41d7245ca4c350db3ed149e43d4b5264f3. No card submitted and no refund initiated.
+
+Plan: temporarily postpone only this fixture's reconcile_after for a bounded hour
+(with original schedule journaled and compare-and-set requiring an unclaimed unpaid
+attempt), and ask user to pause only the preview sandbox webhook. After user pays,
+retrieve the actual cs_test_ session with the matching sandbox key, require local
+unpaid/no-receipt state, cancel the synthetic shipment through the ordinary API,
+then explicitly verify/reconcile it into shipment_not_payable review. No SQL edits
+to money fields, review_reason, payment state or shipment status will fabricate the
+case. The hold is controlled fault injection and must be disclosed, not described
+as an observed spontaneous outage. Stop if held schedule expires or payment has
+already been applied; do not relabel a settled payment. Restore the schedule and
+webhook once review is established.
+
+User will issue a full test refund in Stripe Dashboard. Operator validation must
+retrieve the original session/refund using the production lifecycle service and
+verify matching PaymentIntent, NGN amount and succeeded state, record operator/time
+and unique refund ID, preserve audit/history/unpaid shipment, release the guard
+and reject duplicate recording without changing audit fields. Replayed paid event
+must not resurrect the refunded balance. Applied-payment/partial refunds remain
+unsupported and are not part of this case.
+
+Created Git-ignored .env.stripe-sandbox from private preview config, adding only
+two placeholder Stripe values and sandbox mode. User must fill the same Render
+sandbox credentials locally, never in chat. No secret value viewed/printed, live
+change, hosted fault hold, code behavior change, commit, push or deployment made.
+reports/stripe-provider-refund.json remains passed=false. Private guarded helper
+.verification/refund-review.mjs is syntax-checked, not yet provider-executed.
+Completion remains 9.1/10 pending actual review/refund evidence and restoration.
+
+
+Refund exercise preflight: user saved sandbox credentials privately. Official SDK
+retrieved the expected real test Checkout, confirming sandbox account access and
+reference/session/amount/shipment binding. Provider session open/unpaid; local
+shipment/payment pending. Signing secret checked for configuration shape only.
+No card, refund, schedule hold or webhook setting changed by this preflight.
+Awaiting user pause of the preview destination before applying the bounded hold.
+
+
+Refund exercise: user confirms preview webhook disabled. Applied the guarded
+reconcile_after-only hold to the single matching synthetic payment, with original
+schedule saved before the compare-and-set update. Hold expires at 2026-11-07 17:56:48.451453+00.
+Shipment remains unpaid and no receipts exist. No payment/review/money state
+was manually changed. Next user action is the test-card payment; before cancelling
+and reconciling, recheck the hold is active and no receipt was already applied.
+Restore this hold and the webhook as soon as review is established.
+
+
+## 2026-11-07 — Actual review classification verified
+
+Stripe SDK confirms the isolated test session completed/paid while the guarded
+schedule hold remained active and local shipment was still unpaid/no receipt.
+Cancelled only the synthetic shipment through the authenticated command API, then
+called provider verification to observe payment. Production code classified it as
+shipment_not_payable: shipment cancelled, unpaid, zero applied receipts and one
+review guard. No financial/review state was edited directly to fabricate the case.
+Matching PaymentIntent pi_3UZCvpPFS6zvOA2D2FLpZMYa is the only refund target.
+
+Restored the original reconcile_after with a conditional exact-held-value update;
+private journal marks hold restored. Awaiting user re-enablement of the sandbox
+webhook and a full NGN 2500 test refund of this payment, then actual operator
+validation/recording and replay checks. reports/stripe-provider-refund.json remains
+passed=false. Previous successful payment cases remain unchanged. Estimate 9.1/10.
+
+## 2026-11-07 — Sandbox review refund recorded
+
+Retrieved the existing full NGN 2500 refund re_3UZCvpPFS6zvOA2D2wzfU1u1
+from Stripe and verified succeeded status and matching test PaymentIntent, amount
+and currency. Production lifecycle recordRefund recorded it against the isolated
+review payment with operator sandbox-verification. Payment is refunded; shipment
+remains cancelled/unpaid; applied receipts remain zero; checkout guard is released.
+A duplicate recording was rejected with the expected lifecycle error, and a fresh
+snapshot preserved the recorded refund ID/operator and audit-presence fields.
+
+Independently queried Stripe: exactly one matching preview webhook destination is
+enabled again. Original reconciliation schedule was already restored. Identified
+original paid event evt_1UZCvqPFS6zvOA2DP1OzsN0f for the final delayed-callback
+replay check. No additional refund or charge created. Overall refund report remains
+passed=false until replay confirms the refunded payment cannot be resurrected.
+Estimate remains 9.1/10; this evidence is sandbox-only.
+
+## 2026-11-07 — Refunded payment survives paid-event replay
+
+User confirmed resending original checkout.session.completed event
+ evt_1UZCvqPFS6zvOA2DP1OzsN0f to the preview destination with HTTP 200 delivery.
+A subsequent read-only Neon snapshot, bound to the synthetic fixture and preview
+release e1601f41d7245ca4c350db3ed149e43d4b5264f3, confirms payment remains
+refunded, shipment cancelled/unpaid, receipts zero and checkout guards zero.
+Every selected state/audit field matches the saved post-refund snapshot, including
+refund ID/operator and audit-presence boolean. Exact refund timestamp was not
+selected; webhook delivery status is user-reported, database state independently
+verified. Original reconciliation schedule and webhook destination are restored.
+
+reports/stripe-provider-refund.json now passes the scoped sandbox review/refund,
+duplicate-recording and delayed paid-event replay exercise. No normal applied-
+payment or partial refund support, live-money verification, frontend readiness or
+capacity guarantee is implied. Planning estimate remains 9.1/10 until remaining
+release gates have their own evidence. No production code or deployment changed.
+
+
+## 2026-11-08 — Hosted preview logical recovery verified
+
+Ran a real Neon-to-Neon backup/restore into the empty isotrack_recovery database
+on a separate recovery branch; source matched the isolated preview configuration
+and both hosts differed from live. Both servers PostgreSQL 17.11; native tools
+17.9. Preview source remained read-only. Main, production, Render config, workers
+and provider settings unchanged. No HTTP application or outbound integration
+was started against the restored sessions/tokens/outbox.
+
+Exported one repeatable-read source snapshot and supplied it to pg_dump; compared
+all 19 public/drizzle tables by exact sorted content hashes and counts. Saved
+117035-byte custom archive as authenticated AES-256-GCM ciphertext, read/decrypted
+it from disk, verified its SHA-256, and restored with --single-transaction,
+--exit-on-error, --no-owner and --no-privileges, without --clean. Backup 33.037s;
+restore 54.456s. Follow-up verification 29.104s; because diagnosis interrupted
+validation, these component times are not an uninterrupted end-to-end RTO.
+
+All 95 constraint definitions matched; all 24 foreign-key row checks passed.
+Historical shipments_driver_business_fk remains NOT VALID in catalog, matching
+source; zero row violations observed, not a claim it was permanently validated.
+All 16 migration ledger entries match canonical LF repository SQL; the initial
+strict check exposed CRLF in the first two local files. Exact copied ledger hash
+was preserved; no historical SQL or ledger row was edited. Restored preview owner
+password verifies against the private fixture password (not an HTTP login).
+Two applied receipts and one recorded refund pass receipt/refund/guard checks.
+
+Evidence: reports/hosted-recovery-327352fc-26fc-47d7-8e24-274f2d3b1b0b.json
+retains initial restore and failed validation; reports/hosted-recovery-05bd1b6c-a7ab-4424-a0b9-2223d29b6c89.json
+records successful read-only follow-up; reports/hosted-recovery-payment-invariants.json
+records payment consistency. Initial preflight connection failure and failed
+validation reports retained. Fixed the operator checker to cast catalog name[]
+to text[] and compare journal files with canonical LF endings. The corrected
+full restore command was not repeated over the populated target.
+
+Negative checks: populated-target preflight rejects (expected failure report
+7e2b2411-9681-414b-b6bd-40fa9bf23da7); saved ciphertext authenticates, bit-corrupted
+and truncated copies reject (3/3 private crypto assertions). Operator script
+formatting and ESLint pass. No full regression run: application code unchanged.
+
+Estimate 9.2/10, scoped planning only. Archives and key are ignored local drill
+artifacts in the same directory, not independently retained off-host backups.
+Hosted HTTP recovery, session/token invalidation, outbox/provider reconciliation,
+scheduled backup/retention, traffic cutover, representative volume and capacity
+remain unverified. Source/target are in the same Neon project; project-loss and
+regional disaster recovery are not established. Keep recovery disconnected.
