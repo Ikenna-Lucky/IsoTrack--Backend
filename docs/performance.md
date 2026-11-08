@@ -186,3 +186,44 @@ CPU/memory around Nov 8 15:19–15:21 Africa/Lagos to distinguish endpoint/depen
 latency from runner/network effects. Do not increase load until diagnosed. This
 small run establishes neither a passing hosted baseline nor capacity for a
 representative dataset, a free-tier ceiling or millions of users.
+
+## Low-rate endpoint diagnosis — 2026-11-08
+
+Run `npm run diagnose:preview -- FULL_PREVIEW_RELEASE_SHA` from the backend.
+This separate manual probe reads .env.preview, requires the fixed preview origin,
+resource isolation and exact release SHA, and uses one fixture owner login.
+It compares /health/live, /health/ready and the authenticated preview-shipment
+read: six requests each, sequentially, with 2s gaps and rotating endpoint order.
+Each request keeps a 10s deadline; 429 or two timeouts stop further samples.
+Release checks bracket sampling. No shipment/payment writes or provider calls.
+Login does create a session and auth-budget records; if a refresh cookie is
+returned the runner attempts logout with configured trusted Origin. No cookie
+was returned in the successful deployed sample, so session revocation was not
+attempted or verified. Credentials/tokens/cookies are not saved in the report.
+
+Reports record UTC start time, headers and total duration, HTTP status, response
+size and X-Request-Id if received. Match request IDs to structured request_completed
+logs for server durationSeconds; a client timeout before headers has no server
+request ID. Client duration includes the network, gateway, response transfer and
+application. Public health/readiness samples are not independent resource metrics;
+readiness can use its 5s cache. Six values per endpoint are descriptive, not a
+reliable tail-latency distribution, sustained load or proof of capacity.
+
+First attempt report hosted-diagnostics-49aa0d77-3d43-4d3e-b8fc-d2998b3f5241.json:
+release check itself timed out at 10015ms, before login or sampling. This endpoint
+does not query database/Redis. The failure is preserved and does not establish
+cold start, gateway, local network or process availability as the root cause.
+
+A fresh attempt kept the same deadline and completed all 18 samples, HTTP 200,
+with valid expected payloads. Report hosted-diagnostics-3ee7f5ec-58c5-4856-ad39-76c89afe5244.json
+checks the same e1601f41d7245ca4c350db3ed149e43d4b5264f3 preview release before/after.
+Liveness 295–363ms (median 311); readiness 285–383ms (median 340); shipment
+341–540ms (median 358). One fixture login took 2526ms. No database-only latency
+pattern was established. Both attempts remain evidence: a passing second sample
+does not cancel the original load failures or the failed first release probe.
+
+Formatting and ESLint pass; the two existing percentile/fixed-arrival engine tests
+pass. Production code and deployments unchanged. Next attribution work is a probe
+from an independent network/runner and correlation with server request durations;
+only then repeat bounded load without relaxing its targets. CPU/memory observations
+are still unavailable on the user's plan. Hosted capacity gate remains open.

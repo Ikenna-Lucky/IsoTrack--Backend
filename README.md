@@ -277,7 +277,7 @@ docs/                Contracts, runbooks and dated readiness evidence
 
 The first hosted load run had two 10-second read timeouts at one offered
 operation/second. Further traffic stopped; no maximum capacity was established.
-The next step is better request diagnostics and a low-rate comparison of liveness,
+Low-rate diagnostics now record request IDs and compare liveness,
 readiness and authenticated operations, without assuming a code or hosting cause.
 
 Other open gates include frontend adoption of the new contracts, public deployment

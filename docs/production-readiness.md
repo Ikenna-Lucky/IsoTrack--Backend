@@ -1984,3 +1984,31 @@ provided service limits (0.15 CPU, 512MB), not actual graph measurements; Render
 logs/utilization around Nov 8 15:19–15:21 Africa/Lagos remain needed to attribute
 timeouts. Backend estimate stays 9.3/10. Performance gate remains FAILED for this
 profile; do not raise load or describe the free deployment as proven scalable.
+
+## 2026-11-08 — Low-rate deployed latency diagnosis
+
+Added diagnose:preview as a manual, fixed-origin, SHA/isolation-guarded sequential
+probe, separate from load acceptance. It records UTC time, route, response-header
+and total latency, status and X-Request-Id without storing response bodies or
+credentials. Six requests to each of liveness, readiness and an authenticated
+fixture shipment, rotating order, 2s gaps, 10s deadlines. One login creates normal
+session/auth-budget records; no shipment/payment mutations, Stripe calls, paid
+resources, runtime code changes or deployments.
+
+Initial release-only request timed out at 10015ms, report
+hosted-diagnostics-49aa0d77-3d43-4d3e-b8fc-d2998b3f5241.json. It does not query
+PostgreSQL/Redis, so delays are not isolated to shipment SQL. A fresh attempt with
+the same deadline and release e1601f41d7245ca4c350db3ed149e43d4b5264f3 completed
+18/18 valid HTTP 200 samples: liveness 295–363ms, readiness 285–383ms, shipment
+341–540ms. Medians 311/340/358ms; login sample 2526ms. Successful report
+hosted-diagnostics-3ee7f5ec-58c5-4856-ad39-76c89afe5244.json. No refresh cookie was
+returned, so optional logout/session revocation was not attempted or verified.
+Future reports explicitly retain session cleanup status.
+
+ESLint/formatting pass; two existing load-engine tests pass. Request IDs support
+later server duration correlation. Six sequential samples and a healthy second
+attempt do not establish cause, fixed availability or a passing sustained baseline.
+Network/gateway/cold start/process delay remain hypotheses; actual CPU/memory
+metrics are unavailable on the user's free plan. Next: independent-runner comparison
+and server-duration correlation before another bounded load run. Original hosted
+load gate remains failed; estimate stays 9.3/10.
