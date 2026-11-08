@@ -2012,3 +2012,29 @@ Network/gateway/cold start/process delay remain hypotheses; actual CPU/memory
 metrics are unavailable on the user's free plan. Next: independent-runner comparison
 and server-duration correlation before another bounded load run. Original hosted
 load gate remains failed; estimate stays 9.3/10.
+
+## Independent runner diagnostics tooling — implemented, remote pending
+
+Added Preview latency diagnostics workflow, disabled by default via repository
+PREVIEW_DIAGNOSTICS_ENABLED. Opt-in dev pushes limited to diagnostic-file paths
+bootstrap without changing main. Manual trigger also supplied, with default-branch
+UI limitation documented. Separate preview-diagnostics environment permits only
+dev and needs only the existing synthetic account password. Existing preview
+migration environment branch restrictions remain untouched.
+
+CI uses no .env, database/Redis/JWT/Stripe credentials. Destination is pinned in
+code; code verifies dev ref, trusted event, explicit enablement, full target SHA
+and fixture password before any authenticated request. Added three guard tests
+for minimal credential forwarding, main/preview/PR/event/disabled/identity denials
+and preserved local isolation. Workflow also runs the two existing engine tests.
+Diagnostic report now records runner/platform/runtime, harness SHA and workflow
+run/attempt separately from expected/deployed application SHA. Failed reports
+are uploaded for 14 days. No deploy, migration, higher traffic or threshold change.
+
+All 87 fast tests passed after final changes, with zero failures/skips/todos.
+Formatting and ESLint passed. Prettier parsed/formatted workflow YAML; an
+independent Python YAML validator was unavailable (PyYAML not installed). No external workflow has
+been run by this change; configuration, dev push and actual independent-network
+comparison remain outstanding. Estimate remains 9.3/10; hosted load gate still
+failed pending attribution and a passing representative rerun.
+

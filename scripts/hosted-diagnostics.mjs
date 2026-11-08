@@ -4,7 +4,7 @@ import { parseEnv } from "node:util";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { assertPreviewIsolation } from "../src/lib/preview-isolation.ts";
+import { diagnosticsConfig } from "./diagnostics-config.mjs";
 import { percentile } from "./load-engine.mjs";
 
 // Low-rate sequential diagnosis, separate from load acceptance or capacity tests.
@@ -15,13 +15,19 @@ const report = {
   startedAt: new Date().toISOString(),
   completed: false,
   scope:
-    "Six sequential samples per endpoint from this machine; no shipment/payment writes, provider calls or capacity claim",
+    "Six sequential samples per endpoint from the selected runner; no shipment/payment writes, provider calls or capacity claim",
   expectedSha,
   requestDeadlineMs: 10000,
   gapMs: 2000,
   samples: [],
   setup: [],
   summary: {},
+  runner: process.env.GITHUB_ACTIONS === "true" ? "github-actions" : "local",
+  platform: process.platform,
+  node: process.version,
+  harnessSha: process.env.GITHUB_SHA ?? null,
+  workflowRunId: process.env.GITHUB_RUN_ID ?? null,
+  workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
 };
 let origin,
   token,
@@ -58,8 +64,12 @@ async function probe(name, path, options = {}, setup = false) {
 }
 try {
   assert(/^[a-f0-9]{40}$/.test(expectedSha ?? ""));
-  config = parseEnv(await readFile(".env.preview", "utf8"));
-  assertPreviewIsolation({ ...config, RELEASE_SHA: expectedSha });
+  const github = process.env.GITHUB_ACTIONS === "true";
+  config = diagnosticsConfig(
+    github ? process.env : parseEnv(await readFile(".env.preview", "utf8")),
+    expectedSha,
+    github,
+  );
   origin = new URL(config.APP_URL).origin;
   assert.equal(origin, "https://isotrack-backend-preview.onrender.com");
   assert(config.PREVIEW_FIXTURE_PASSWORD?.length >= 32);
@@ -168,7 +178,9 @@ try {
     "Diagnosis stopped before all checks completed; private response details withheld";
 } finally {
   report.fixtureSessionRevoked = false;
-  report.sessionCleanup = "No refresh cookie returned; no logout attempted";
+  report.sessionCleanup = cookie
+    ? "Refresh cookie returned; no trusted frontend configured for logout"
+    : "No refresh cookie returned; no logout attempted";
   if (cookie && origin && config?.FRONTEND_URL) {
     const logout = await probe(
       "fixture logout",

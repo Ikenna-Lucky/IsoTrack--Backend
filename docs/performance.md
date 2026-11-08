@@ -227,3 +227,59 @@ pass. Production code and deployments unchanged. Next attribution work is a prob
 from an independent network/runner and correlation with server request durations;
 only then repeat bounded load without relaxing its targets. CPU/memory observations
 are still unavailable on the user's plan. Hosted capacity gate remains open.
+
+## Independent GitHub runner comparison
+
+Workflow: .github/workflows/preview-diagnostics.yml, display name Preview latency
+ diagnostics. It is disabled unless repository variable PREVIEW_DIAGNOSTICS_ENABLED
+is exactly true. It runs only on isoTrack-dev-branch, with no PR trigger. Opted-in
+pushes changing the workflow or diagnostic/config/load-engine scripts bootstrap
+it without merging into main. workflow_dispatch is also defined, but the GitHub
+browser Run workflow button normally requires the file on the default branch;
+do not merge into main merely to expose that button.
+
+Configure before the first push:
+
+1. Repository Settings > Environments > New environment: preview-diagnostics.
+   Restrict deployment branches to isoTrack-dev-branch. This environment stores
+   diagnostics credentials; the job does not deploy an application.
+2. Add environment secret PREVIEW_FIXTURE_PASSWORD, using the same private
+   synthetic-account password already stored in the existing preview environment.
+   It is not a JWT, database password, Stripe secret or newly generated password.
+   Do not replace the existing fixture password or paste it into logs/chat.
+3. Settings > Secrets and variables > Actions > Variables: add repository variables
+   PREVIEW_DIAGNOSTICS_ENABLED=true and PREVIEW_DIAGNOSTICS_SHA equal to the full
+   SHA currently returned by the deployed preview /health/release endpoint.
+   That is the backend release being measured, not the dev commit containing
+   these diagnostics. A mismatch stops before fixture login.
+4. Commit the new workflow, scripts, tests and docs on dev and push dev. No merge
+   into preview or main is needed. Open Actions and select the push run of Preview
+   latency diagnostics. Normal Backend CI can run independently on the same push.
+5. Inspect the five guard/engine tests and diagnostic step. Download the
+   preview-latency-diagnostics-RUN_ID-ATTEMPT artifact; failed diagnostics are also
+   uploaded. JSON includes runner=github-actions, harnessSha, expected/deployed
+   release SHA, workflow run ID/attempt, statuses, timings and request IDs.
+6. Set PREVIEW_DIAGNOSTICS_ENABLED=false after the comparison to stop subsequent
+   diagnostic-file pushes from probing the hosted preview. Keep reports locally
+   if evidence is needed beyond the 14-day artifact retention window.
+
+The new environment does not widen the existing preview environment's branch rules.
+Only the synthetic password is supplied to the HTTP step; DB/Redis/JWT/Stripe
+credentials and .env files are unnecessary. The destination is pinned in code,
+the job is dev-only and opt-in, and no code runs with credentials on PR events.
+No deploy hook, database migration, fixture preparation or Render change exists.
+Existing allowed action versions are reused; no new action allowance is needed.
+
+Install is frozen; Ubuntu 24.04/Node 24.12.0/Bun 1.3.12 match the project tooling.
+Runs are serialized, not automatically cancelled. Reports from failed attempts
+are preserved; use a rerun of the existing push run if available, and do not
+silently replace a failed result. Changing the expected SHA cannot revive an old
+execution already started; use a fresh run after configuration/release changes.
+
+Comparison: keep the deployed SHA and probe profile identical to a local run.
+Compare endpoint ranges/statuses, not only six-sample p95. Correlate received
+X-Request-Id with server request_completed.durationSeconds where available.
+An absent timeout request ID cannot be correlated solely from the client report.
+Two different network locations narrow attribution but do not prove cause.
+The independent job is implemented and locally checked; remote execution and
+comparison remain pending until the configured dev push actually runs.
