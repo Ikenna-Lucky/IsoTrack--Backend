@@ -8,7 +8,7 @@ a time. Production readiness is an engineering objective, not a current claim.
 Millions of registered users is a growth scenario; supported concurrent traffic
 must be established by measurement. Do not use paid services without approval.
 
-Current completion estimate: **9.2/10** after local regression, performance baselines, retention, shipment read privacy, public tracking/history, shared request-protection checks and preview release tooling
+Current completion estimate: **9.3/10** after local regression, performance baselines, retention, shipment read privacy, public tracking/history, shared request-protection checks and preview release tooling
 (2026-11-06). Update this estimate after each
 build as requested. It is a rough planning assessment of the agreed backend scope,
 not a measured percentage, capacity claim or release approval. Deployment, full
@@ -1913,3 +1913,44 @@ Hosted HTTP recovery, session/token invalidation, outbox/provider reconciliation
 scheduled backup/retention, traffic cutover, representative volume and capacity
 remain unverified. Source/target are in the same Neon project; project-loss and
 regional disaster recovery are not established. Keep recovery disconnected.
+
+
+## 2026-11-08 — Full application recovery HTTP smoke verified
+
+Ran the real Bun src/index.ts application locally against the restored hosted Neon
+isotrack_recovery database using the normal Neon HTTPS driver. No SQL transport
+adapter or mocked query results. Disposable Redis 7 container exposed only on a
+random loopback port; fresh per-run JWT signing secrets. Preview/live connections,
+Render settings and main untouched. Stripe disabled with no keys, notification
+workers and retention disabled, dummy email config only. HTTP egress allowlist
+permits only the installed Neon driver's derived HTTPS endpoint and checks its
+Neon-Connection-String header against the exact recovery database credentials.
+No provider call or worker delivery attempted; no application deployed publicly.
+
+Final report reports/recovery-smoke-94aa8c51-5a7c-42b0-b259-9e38b7a54827.json:
+7 passed cases, 0 failed; cleanup passed. Covers isolated readiness; four restored
+account logins and bad-password/anonymous denial; business/driver/customer shipment
+reads and cross-business read/write denial without shipment changes; restored
+applied-payment/refund projections through HTTP; new recovery-only shipment create
+and cancel with durable event/version checks and idempotent replay; restart
+persistence, cookie logout and rejection of the revoked access token. Financial
+table hashes unchanged from the original backup; no outbox attempts or deliveries
+advanced. New synthetic shipments, sessions and idempotency/outbox records remain
+only in recovery as drill evidence. Restored sessions were not bulk invalidated;
+fresh test signing keys are process-only and not a production rotation policy.
+
+Earlier failed reports retained: 68bd5874-655c-466f-968f-b950120ae307 (over-restrictive
+harness URL allowlist omitted Neon's actual api endpoint; no application bug),
+6b16fbd8-e6a8-4727-9cd3-fe94749dac19 (restart read before asynchronous Redis budget
+connection became ready). Corrected harness checks the driver's actual endpoint
+and polls only the startup read for bounded 503 readiness, recording [503,200]
+in the final report. Cookie logout supplies the required trusted Origin. No
+production runtime change or readiness deadline relaxation made.
+
+Added manual recovery:smoke command, isolated server wrapper and operator docs.
+ESLint and formatting pass for both new scripts; primary validation is the real
+HTTP/Neon/Redis run. Existing unit/integration suite not rerun because production
+code is unchanged. Backend planning estimate 9.3/10. Render ingress/cutover,
+provider side-effect reconciliation, bulk session invalidation, independent backup
+storage/scheduling, hosted alert confirmation and representative capacity remain
+separate gates. This is not proof of a complete production disaster recovery.

@@ -12,6 +12,7 @@
     "test:integration": "node scripts/run-tests.mjs integration",
     "test:load": "node scripts/load-test.mjs",
     "recovery:drill": "node scripts/run-tests.mjs recovery",
+    "recovery:smoke": "node scripts/recovery-smoke.mjs",
     "delivery:status": "bun run src/db/delivery-operations.ts status",
     "delivery:purge": "bun run src/db/delivery-operations.ts purge",
     "lint": "eslint src tests scripts eslint.config.mjs --max-warnings 0",

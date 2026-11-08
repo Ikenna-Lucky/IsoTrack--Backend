@@ -165,3 +165,40 @@ CRLF journal diagnosis and scope limits. One historical fleet FK remains NOT VAL
 in both databases, with zero observed row violations. No normal service is attached
 to the restored database. Keep it isolated; the populated-target guard now refuses
 another restore. Use a newly provisioned empty destination for any future rehearsal.
+
+## Full application smoke against a restored database
+
+After successful logical restore validation, run `npm run recovery:smoke` with
+Node 24, Bun and Docker available. If Bun is not on PATH, set BUN_EXECUTABLE to
+its absolute executable path. The command reads the same ignored recovery and
+preview files, and requires a successful hosted-recovery report under reports/.
+It checks target identity and restored financial content before starting anything.
+Do not connect any other service to this recovery database during the exercise.
+
+This is an explicit manual command, not part of ordinary CI: it uses private
+hosted connections and makes isolated recovery database writes. It starts the
+full Bun application with normal Neon HTTPS transport and disposable local Redis.
+Only recovery database HTTP traffic is allowed from the application; workers,
+retention and Stripe are disabled. Fresh signing keys prevent test tokens from
+being useful on preview. Dummy email settings contain no provider credentials.
+No existing runtime environment or deployed URL is modified.
+
+Seven sequential cases cover readiness, restored logins, tenant denial, stored
+payment/refund projections, a fresh shipment create/cancel with idempotency, and
+restart/session revocation. Checks preserve original financial table hashes and
+verify no notification delivery attempts advance. Startup Redis connection may
+briefly return 503; the restart check records each status and waits at most six
+attempts, rather than treating initial listening as full request readiness.
+The test supplies the trusted Origin required for cookie logout.
+
+Reports are reports/recovery-smoke-RUN_ID.json and retain case status/timing,
+backup identity and cleanup result without passwords or tokens. Failed attempts
+are preserved. App processes and disposable Redis are stopped in finally; test
+shipments/sessions/outbox rows remain only in recovery. Re-running creates a new
+shipment; it does not truncate restored data. Financial drift from the baseline
+causes a stop. Keep the recovery branch disconnected afterward.
+
+On 2026-11-08 all seven cases passed against the hosted restore with cleanup
+verified. This establishes local application recovery over hosted storage, not
+Render deployment, browser UI recovery, provider reconciliation, public traffic
+cutover or a production session/token invalidation policy.
