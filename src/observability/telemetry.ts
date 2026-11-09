@@ -218,8 +218,33 @@ export function requestTelemetry(
 
 export function safeErrorHandler(log = createEventLogger()): ErrorHandler {
   return (error, c) => {
-    if (error instanceof HTTPException && error.status < 500)
-      return error.getResponse();
+    if (error instanceof HTTPException && error.status < 500) {
+      const response = error.getResponse();
+      if (response.headers.get("Content-Type")?.includes("application/json"))
+        return response;
+      const codes: Record<number, string> = {
+        400: "BAD_REQUEST",
+        401: "UNAUTHORIZED",
+        403: "FORBIDDEN",
+        404: "NOT_FOUND",
+        405: "METHOD_NOT_ALLOWED",
+        408: "REQUEST_TIMEOUT",
+        409: "CONFLICT",
+        413: "PAYLOAD_TOO_LARGE",
+        422: "VALIDATION_ERROR",
+        429: "TOO_MANY_REQUESTS",
+      };
+      const headers = new Headers(response.headers);
+      headers.set("Content-Type", "application/json; charset=UTF-8");
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: codes[error.status] ?? "REQUEST_REJECTED",
+          message: error.message,
+        }),
+        { status: error.status, headers },
+      );
+    }
     const status = error instanceof HTTPException ? error.status : 500;
     log("request_failed", {
       requestId: currentRequestId(),

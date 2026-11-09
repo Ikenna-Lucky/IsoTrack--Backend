@@ -1,5 +1,8 @@
 # Backend readiness register
 
+Latest scope transition: [backend handoff update, 2026-11-09](#backend-handoff-update--2026-11-09).
+Earlier dated entries below retain their original results and limitations.
+
 ## Scope and decisions
 
 This is a portfolio project with a zero-spend infrastructure budget. Use GitHub
@@ -2037,4 +2040,43 @@ independent Python YAML validator was unavailable (PyYAML not installed). No ext
 been run by this change; configuration, dev push and actual independent-network
 comparison remain outstanding. Estimate remains 9.3/10; hosted load gate still
 failed pending attribution and a passing representative rerun.
+
+## Backend handoff update — 2026-11-09
+
+The current working-tree backend candidate is ready for frontend implementation
+within the agreed sandbox portfolio scope. This is not a commercial release,
+million-user capacity result or confirmation that the latest changes are hosted.
+The [finite closeout checklist](backend-closeout.md) and
+[frontend API contract](frontend-handoff.md) are the current entry points;
+dated evidence below remains history and is not silently superseded as passing.
+
+Account deactivation replaces unsafe hard deletion, preserves historical records,
+invalidates credentials, and blocks unresolved custody, work, payments and fleet
+ownership. Real PostgreSQL/Bun tests cover lock races, rollback, password races
+and invitation rejection after an owner closes. Fleet/notification collections
+are cursor bounded; mark-all-read works in 500-row batches; profile coordinates
+are geographically validated; settings patches avoid lost disjoint updates.
+New migration 0016 installs closure guards and 0017 installs collection indexes.
+The generated Drizzle snapshot differs from 0015 by those three indexes only.
+
+Final local evidence: lint, TypeScript and Bun build pass; 87/87 fast tests and
+255/255 integration tests pass (shards: 95, 51, 109), with zero skips, cancellations
+or todos. Report files are recorded in the closeout checklist. Earlier unsharded
+timeout and two shard-1 failures are retained, not counted as passing. No remote
+CI result yet identifies these uncommitted candidate changes.
+
+GitHub diagnostic run 42522804865 attempt 3 was independently checked successful,
+harness SHA 2b9bfd79fe3a3b28d9ba17140840e42debc3858b. It verifies that diagnostic
+workflow against its configured preview, not this newer local backend candidate.
+The earlier hosted sustained baseline still failed; successful low-rate probes
+do not establish cause, recovery under sustained load or supported capacity.
+
+Frontend work has started separately on dev: customer/business signup,
+invitation-based new-driver enrollment, session-refresh coordination and role
+redirects, account-change cache clearing and password-confirmed deactivation UI.
+Before browser acceptance, the owner must push the candidate, verify its CI,
+promote to the preview branch and confirm migrations/release identity/smoke.
+Main/live remain unchanged. Independently retained backups, confirmed alert
+delivery, legacy fleet-FK validation and public cutover remain operating/release
+obligations; frontend development does not certify them.
 

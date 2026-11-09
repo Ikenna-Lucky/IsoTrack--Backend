@@ -1,46 +1,34 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
-import { nanoid } from "nanoid";
+import { eq, sql } from "drizzle-orm";
+import { HTTPException } from "hono/http-exception";
 import { authenticate, requireRole } from "@/middleware/auth";
 import { db } from "@/db";
 import { businesses } from "@/db/schema";
 import { createBusinessAnalyticsRouter } from "./shipment-reads";
 import { writeStore } from "@/services/write-store";
-import { findUserById, sanitizeUser } from "@/db/queries/users";
+import { sanitizeUser } from "@/db/queries/users";
 import { success, error } from "@/lib/response";
 
 export const businessRouter = new Hono();
 
 businessRouter.use("*", authenticate, requireRole("business"));
 
-// Resolve (or auto-create) the business row for a user.
-// If a business-role user has no profile row (e.g. registered before the bug
-// was fixed), we create one on the fly so the dashboard always loads.
+// Registration creates the profile atomically. Legacy inconsistencies require
+// explicit repair, rather than writes or arbitrary profile selection during GET.
 async function ensureBusiness(userId: string) {
-  const [existing] = await db
+  const rows = await db
     .select({ id: businesses.id })
     .from(businesses)
     .where(eq(businesses.userId, userId))
-    .limit(1);
-
-  if (existing) return existing;
-
-  const user = await findUserById(userId);
-  const [created] = await db
-    .insert(businesses)
-    .values({
-      id: nanoid(),
-      userId,
-      businessName: user?.name ?? "My Business",
-    })
-    .returning({ id: businesses.id });
-
-  if (!created) throw new Error("Failed to create business profile");
-  return created;
+    .limit(2);
+  if (rows.length !== 1)
+    throw new HTTPException(409, {
+      message: "Business profile needs operator reconciliation",
+    });
+  return rows[0]!;
 }
-
 const updateProfileSchema = z.object({
   businessName: z.string().min(2).max(100).optional(),
   address: z
@@ -138,19 +126,12 @@ businessRouter.patch(
     const body = c.req.valid("json");
     const biz = await ensureBusiness(userId);
 
-    const existing = await db.query.businesses.findFirst({
-      where: eq(businesses.id, biz.id),
-      columns: { notificationPreferences: true },
-    });
-
-    const merged = {
-      ...((existing?.notificationPreferences as object) ?? {}),
-      ...body,
-    };
-
     const [updated] = await db
       .update(businesses)
-      .set({ notificationPreferences: merged, updatedAt: new Date() })
+      .set({
+        notificationPreferences: sql`coalesce(${businesses.notificationPreferences}, '{}'::jsonb) || ${JSON.stringify(body)}::jsonb`,
+        updatedAt: new Date(),
+      })
       .where(eq(businesses.id, biz.id))
       .returning({
         notificationPreferences: businesses.notificationPreferences,
@@ -209,16 +190,12 @@ businessRouter.patch(
     const body = c.req.valid("json");
     const biz = await ensureBusiness(userId);
 
-    const existing = await db.query.businesses.findFirst({
-      where: eq(businesses.id, biz.id),
-      columns: { preferences: true },
-    });
-
-    const merged = { ...((existing?.preferences as object) ?? {}), ...body };
-
     const [updated] = await db
       .update(businesses)
-      .set({ preferences: merged, updatedAt: new Date() })
+      .set({
+        preferences: sql`coalesce(${businesses.preferences}, '{}'::jsonb) || ${JSON.stringify(body)}::jsonb`,
+        updatedAt: new Date(),
+      })
       .where(eq(businesses.id, biz.id))
       .returning({ preferences: businesses.preferences });
 

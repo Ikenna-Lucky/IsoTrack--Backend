@@ -110,7 +110,13 @@ test("client errors retain status while internal errors have safe response and l
   app.get("/internal", () => {
     throw new HTTPException(503, { message: "SECRET upstream key" });
   });
-  assert.equal((await app.request("/denied")).status, 401);
+  const denied = await app.request("/denied");
+  assert.equal(denied.status, 401);
+  assert.deepEqual(await denied.json(), {
+    success: false,
+    error: "UNAUTHORIZED",
+    message: "Unauthorized",
+  });
   const response = await app.request("/internal");
   assert.equal(response.status, 503);
   assert.ok(!(await response.text()).includes("SECRET"));

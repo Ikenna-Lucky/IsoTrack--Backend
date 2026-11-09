@@ -9,7 +9,10 @@ import type { Coordinates } from "@/types";
 
 export async function findDriverById(id: string, ownerUserId: string) {
   return db.query.drivers.findFirst({
-    where: and(eq(drivers.id, id), fleetAccessPredicate(drivers.businessId, ownerUserId)),
+    where: and(
+      eq(drivers.id, id),
+      fleetAccessPredicate(drivers.businessId, ownerUserId),
+    ),
     with: { user: true },
   });
 }
@@ -17,13 +20,6 @@ export async function findDriverById(id: string, ownerUserId: string) {
 export async function findDriverByUserId(userId: string) {
   return db.query.drivers.findFirst({
     where: eq(drivers.userId, userId),
-    with: { user: true },
-  });
-}
-
-export async function findAvailableDrivers(ownerUserId: string) {
-  return db.query.drivers.findMany({
-    where: and(eq(drivers.status, "available"), fleetAccessPredicate(drivers.businessId, ownerUserId)),
     with: { user: true },
   });
 }

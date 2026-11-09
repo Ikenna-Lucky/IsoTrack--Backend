@@ -113,6 +113,20 @@
       "when": 1793664000011,
       "tag": "0015_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794182400000,
+      "tag": "0016_account_deactivation",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794182400001,
+      "tag": "0017_collection_indexes",
+      "breakpoints": true
     }
   ]
 }

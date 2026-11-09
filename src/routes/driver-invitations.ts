@@ -4,7 +4,7 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { hash } from "bcryptjs";
 import { nanoid } from "nanoid";
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { businesses, driverInvitations } from "@/db/schema";
 import { authenticate, requireRole } from "@/middleware/auth";
@@ -12,7 +12,10 @@ import {
   createInvitationToken,
   hashInvitationToken,
 } from "@/lib/invitation-token";
-import { acceptDriverInvitationStatement, acceptExistingDriverInvitationStatement } from "@/db/queries/accept-driver-invitation";
+import {
+  acceptDriverInvitationStatement,
+  acceptExistingDriverInvitationStatement,
+} from "@/db/queries/accept-driver-invitation";
 import { createExistingDriverInvitationRouter } from "./existing-driver-invitation";
 import { success, error } from "@/lib/response";
 
@@ -33,6 +36,22 @@ const acceptanceSchema = z
   });
 
 export const driverInvitationsRouter = new Hono();
+async function enroll(statement: SQL) {
+  try {
+    return (await db.execute(statement)).rows;
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "23514" &&
+      "constraint" in error &&
+      error.constraint === "active_fleet_accounts"
+    )
+      return [];
+    throw error;
+  }
+}
 driverInvitationsRouter.use("*", bodyLimit({ maxSize: 8192 }));
 driverInvitationsRouter.use("*", async (c, next) => {
   c.header("Cache-Control", "no-store");
@@ -56,13 +75,14 @@ driverInvitationsRouter.post(
           isNull(driverInvitations.acceptedAt),
           isNull(driverInvitations.revokedAt),
           gt(driverInvitations.expiresAt, sql`statement_timestamp()`),
+          sql`exists(select 1 from businesses b join users owner on owner.id=b.user_id where b.id=${driverInvitations.businessId} and owner.is_active)`,
         ),
       )
       .limit(1);
     if (!invitation)
       return error(c, "Invitation is invalid or unavailable", 404);
 
-    const result = await db.execute(
+    const rows = await enroll(
       acceptDriverInvitationStatement({
         tokenHash,
         email: body.email,
@@ -74,7 +94,7 @@ driverInvitationsRouter.post(
         vehiclePlate: body.vehiclePlate,
       }),
     );
-    if (!result.rows[0])
+    if (!rows[0])
       return error(
         c,
         "Invitation could not be accepted; it may be unavailable or the account already exists",
@@ -82,20 +102,30 @@ driverInvitationsRouter.post(
       );
     // Login is a separate operation: issuing a session cannot partially complete enrollment.
     return success(c, {
-      data: result.rows[0],
+      data: rows[0],
       message: "Fleet joined. Sign in to continue.",
       status: 201,
     });
   },
 );
 
-driverInvitationsRouter.route("/", createExistingDriverInvitationRouter({
-  authenticate,
-  accept: async (userId, token) => {
-    const result = await db.execute(acceptExistingDriverInvitationStatement(userId, hashInvitationToken(token)));
-    return result.rows[0] as { userId: string; driverId: string; businessId: string } | undefined;
-  },
-}));
+driverInvitationsRouter.route(
+  "/",
+  createExistingDriverInvitationRouter({
+    authenticate,
+    accept: async (userId, token) => {
+      const rows = await enroll(
+        acceptExistingDriverInvitationStatement(
+          userId,
+          hashInvitationToken(token),
+        ),
+      );
+      return rows[0] as
+        | { userId: string; driverId: string; businessId: string }
+        | undefined;
+    },
+  }),
+);
 
 driverInvitationsRouter.use("*", authenticate, requireRole("business"));
 

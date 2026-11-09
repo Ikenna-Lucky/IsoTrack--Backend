@@ -19,6 +19,8 @@ export function acceptDriverInvitationStatement(input: Acceptance) {
     where token_hash = ${input.tokenHash} and email = ${input.email}
       and accepted_at is null and revoked_at is null
       and expires_at > statement_timestamp()
+      and exists(select 1 from businesses b join users owner on owner.id=b.user_id
+        where b.id=driver_invitations.business_id and owner.is_active)
     for update
   ), new_user as (
     insert into users (id, email, password_hash, name, role)
@@ -42,7 +44,10 @@ export function acceptDriverInvitationStatement(input: Acceptance) {
   from new_driver cross join accepted`;
 }
 
-export function acceptExistingDriverInvitationStatement(userId: string, tokenHash: string) {
+export function acceptExistingDriverInvitationStatement(
+  userId: string,
+  tokenHash: string,
+) {
   return sql`with invitation as materialized (
     select i.id, i.business_id from driver_invitations i
     join users u on u.email = i.email
@@ -50,6 +55,8 @@ export function acceptExistingDriverInvitationStatement(userId: string, tokenHas
       and u.role = 'driver' and u.is_active = true
       and i.accepted_at is null and i.revoked_at is null
       and i.expires_at > statement_timestamp()
+      and exists(select 1 from businesses b join users owner on owner.id=b.user_id
+        where b.id=i.business_id and owner.is_active)
     for update of i
   ), joined_driver as (
     update drivers d set business_id = invitation.business_id,

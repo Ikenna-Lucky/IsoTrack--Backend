@@ -24,10 +24,10 @@ import {
   sanitizeUser,
 } from "@/db/queries/users";
 import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { updateUser } from "@/db/queries/users";
 import { success, error } from "@/lib/response";
+import { createAccountDeactivationRouter } from "./account-deactivation";
+import { apiProtection } from "../services/api-protection";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -137,21 +137,16 @@ authRouter.patch(
   },
 );
 
-// ─── DELETE /auth/me ──────────────────────────────────────────────────────────
-// Permanently delete the authenticated user and all associated data.
-
-authRouter.delete("/me", authenticate, async (c) => {
-  const userId = c.get("userId" as never) as string;
-
-  const user = await findUserById(userId);
-  if (!user) return error(c, "User not found", 404);
-
-  // Cascade delete: drivers/businesses/shipments are handled by FK onDelete cascade.
-  await db.delete(users).where(eq(users.id, userId));
-
-  clearRefreshCookie(c);
-  return success(c, { data: null, message: "Account permanently deleted" });
-});
+authRouter.route(
+  "/",
+  createAccountDeactivationRouter({
+    authenticate,
+    protectPeer: apiProtection("account", "peer"),
+    protectAccount: apiProtection("account", "account"),
+    store: writeStore,
+    comparePassword: compare,
+  }),
+);
 
 // ─── PATCH /auth/password ─────────────────────────────────────────────────────
 // Change the authenticated user's password.

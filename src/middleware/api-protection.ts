@@ -3,9 +3,13 @@ import type { Context, MiddlewareHandler } from "hono";
 import type { ApiBudget } from "../lib/api-budget.ts";
 import { budgetPeer } from "../lib/request-peer.ts";
 
-type Group = "tracking" | "shipments" | "payments";
+type Group = "tracking" | "shipments" | "payments" | "account";
 type Phase = "peer" | "account";
 const policies = {
+  account: {
+    read: { peer: 120, account: 60 },
+    write: { peer: 30, account: 10 },
+  },
   tracking: {
     read: { peer: 60, account: 60 },
     write: { peer: 60, account: 60 },

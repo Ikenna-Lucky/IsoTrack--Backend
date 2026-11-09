@@ -54,11 +54,12 @@ function parsePage(
   params: URLSearchParams,
   actor: ShipmentActor,
   historyFor?: string,
+  collection?: "drivers" | "available-drivers" | "notifications",
 ): ShipmentPage {
   for (const name of params.keys())
     if (
       !(
-        historyFor
+        historyFor || collection
           ? ["limit", "cursor"]
           : ["limit", "cursor", "includeCompleted"]
       ).includes(name) ||
@@ -76,9 +77,11 @@ function parsePage(
   const includeCompleted = completed === "true";
   const scope = hashValue(
     JSON.stringify(
-      historyFor
-        ? ["shipment-events", actor.userId, actor.role, historyFor]
-        : [actor.userId, actor.role, includeCompleted],
+      collection
+        ? ["collection", collection, actor.userId, actor.role]
+        : historyFor
+          ? ["shipment-events", actor.userId, actor.role, historyFor]
+          : [actor.userId, actor.role, includeCompleted],
     ),
   );
   let position: ShipmentPosition | null = null;
@@ -101,4 +104,11 @@ export function shipmentCursor(scope: string, time: string, id: string) {
   return Buffer.from(
     JSON.stringify(positionSchema.parse({ v: 1, scope, time, id })),
   ).toString("base64url");
+}
+export function parseCollectionPage(
+  params: URLSearchParams,
+  actor: ShipmentActor,
+  collection: "drivers" | "available-drivers" | "notifications",
+) {
+  return parsePage(params, actor, undefined, collection);
 }

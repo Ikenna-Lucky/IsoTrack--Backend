@@ -275,6 +275,13 @@ docs/                Contracts, runbooks and dated readiness evidence
 
 ## Current engineering work
 
+The backend contract is frozen for the first frontend integration slice. Start
+with the [frontend handoff](docs/frontend-handoff.md) and the finite
+[backend closeout checklist](docs/backend-closeout.md). The candidate adds
+password-confirmed [account deactivation](docs/account-deactivation.md) and bounded
+fleet/notification collections; deploy migrations 0016–0017 to preview before
+browser acceptance. Main/live are not changed by the development work.
+
 The first hosted load run had two 10-second read timeouts at one offered
 operation/second. Further traffic stopped; no maximum capacity was established.
 Low-rate diagnostics now record request IDs and compare liveness,
