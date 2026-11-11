@@ -161,6 +161,16 @@ explicit performance runs outside automatic integration discovery. They use
 production HTTP/auth/SQL code with a test-only pooled PostgreSQL TCP adapter.
 See docs/performance.md for traffic, thresholds, evidence and limitations.
 
+## Local Docker adapter
+
+database-transport.integration.mjs uses a dedicated `isotrack-adapter-test-*`
+container and the actual PostgreSQL transport. It verifies the complete migration
+journal, a no-op repeat, transaction commit/rollback, bound parameters, cancelled
+queries and recovery after cancellation without retaining partial transaction
+writes. It does not read `.env` or contact Neon. database-config.test.mjs verifies
+that the local adapter rejects hosted targets/deployment modes and that Neon
+remains the default. See [local setup](../docs/local-docker.md).
+
 ## Retention cleanup
 
 retention.integration.mjs applies the full migration journal to disposable PostgreSQL

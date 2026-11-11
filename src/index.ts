@@ -31,6 +31,7 @@ import { startRetention } from "./services/retention";
 import { apiBodyBoundary } from "./middleware/api-protection";
 import { closeApiProtection } from "./services/api-protection";
 import { createReleaseRouter } from "./observability/release";
+import { database } from "./db";
 
 // Hono app
 const app = new Hono();
@@ -112,6 +113,7 @@ function shutdown() {
     clearTimeout(deadline);
     operations.close();
     closeApiProtection();
+    await database.close();
   };
   void drain().catch(() => {
     logEvent("shutdown_failed");

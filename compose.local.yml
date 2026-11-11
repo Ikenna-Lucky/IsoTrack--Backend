@@ -1,0 +1,41 @@
+name: isotrack-local
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: isotrack_local
+      POSTGRES_USER: isotrack_local
+      POSTGRES_PASSWORD: ${ISOTRACK_LOCAL_DB_PASSWORD:?Run local:setup first}
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U isotrack_local -d isotrack_local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    environment:
+      REDISCLI_AUTH: ${ISOTRACK_LOCAL_REDIS_PASSWORD:?Run local:setup first}
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "${ISOTRACK_LOCAL_REDIS_PASSWORD:?Run local:setup first}",
+      ]
+    ports:
+      - "127.0.0.1:16379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  postgres_data:
+  redis_data:

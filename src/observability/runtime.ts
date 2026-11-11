@@ -1,6 +1,6 @@
 import IORedis from "ioredis";
 import { PgDialect } from "drizzle-orm/pg-core";
-import { db } from "../db";
+import { database } from "../db";
 import { env } from "../lib/env";
 import { backlogStatement } from "./backlog";
 import { createOperationalRouter, readinessStatement } from "./health";
@@ -41,20 +41,17 @@ export function createOperationalRuntime() {
     metrics: telemetry,
     token: env.METRICS_TOKEN,
     draining: () => draining,
-    database: (signal) =>
-      db.$client(readinessStatement, [], { fetchOptions: { signal } }),
+    database: (signal) => database.query(readinessStatement, [], { signal }),
     redis: async () => {
       if ((await redis.ping()) !== "PONG")
         throw new Error("Redis probe failed");
     },
     backlog: async (signal) => {
       const query = dialect.sqlToQuery(backlogStatement());
-      const result = await db.$client(query.sql, query.params, {
-        fullResults: true,
-        arrayMode: false,
-        fetchOptions: { signal },
+      const result = await database.query(query.sql, query.params, {
+        signal,
       });
-      return result.rows.map((row) => {
+      return result.map((row) => {
         const r = row.result as Record<string, unknown>;
         return {
           queue: String(r.queue),

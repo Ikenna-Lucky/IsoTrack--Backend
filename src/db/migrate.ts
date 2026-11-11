@@ -1,36 +1,38 @@
-import { neon } from "@neondatabase/serverless";
+import { createDatabaseTransport } from "./transport.ts";
 import { PgDialect } from "drizzle-orm/pg-core";
 import type { SQL } from "drizzle-orm";
 import { fileURLToPath } from "node:url";
 import { runMigrations } from "./migration-runner.ts";
 
 async function main(): Promise<void> {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is required");
-  const client = neon(url);
+  const client = createDatabaseTransport(process.env);
   const dialect = new PgDialect();
   const store = {
     execute: async (statement: SQL) => {
       const query = dialect.sqlToQuery(statement);
-      return client(query.sql, query.params, {
-        fetchOptions: { signal: AbortSignal.timeout(120_000) },
+      return client.query(query.sql, query.params, {
+        timeoutMs: 120_000,
       });
     },
     transaction: async (statements: SQL[]) => {
       await client.transaction(
         statements.map((statement) => {
           const query = dialect.sqlToQuery(statement);
-          return client(query.sql, query.params);
+          return { text: query.sql, params: query.params };
         }),
-        { fetchOptions: { signal: AbortSignal.timeout(120_000) } },
+        { timeoutMs: 120_000 },
       );
     },
   };
-  const count = await runMigrations(
-    store,
-    fileURLToPath(new URL("../../drizzle", import.meta.url)),
-  );
-  console.log(`Database migrations complete: ${count} applied.`);
+  try {
+    const count = await runMigrations(
+      store,
+      fileURLToPath(new URL("../../drizzle", import.meta.url)),
+    );
+    console.log(`Database migrations complete: ${count} applied.`);
+  } finally {
+    await client.close();
+  }
 }
 
 main().catch(() => {

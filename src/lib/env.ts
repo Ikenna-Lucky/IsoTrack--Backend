@@ -3,6 +3,7 @@ import { tokenDurationSeconds } from "./token-duration";
 import { trustedProxyAddresses } from "./request-peer";
 import { assertPreviewIsolation } from "./preview-isolation";
 import { validateStripeConfig } from "./stripe-config";
+import { databaseConfig } from "./database-config";
 
 const tokenLifetime = z.string().refine((value) => {
   try {
@@ -49,6 +50,7 @@ const envSchema = z
       }, "Use comma-separated exact proxy IP addresses, without CIDRs or wildcards"),
 
     DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+    DATABASE_DRIVER: z.enum(["neon", "postgres"]).default("neon"),
     RETENTION_ENABLED: z
       .enum(["true", "false"])
       .default("false")
@@ -99,6 +101,16 @@ const envSchema = z
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
   })
   .superRefine((value, context) => {
+    try {
+      databaseConfig(value);
+    } catch {
+      context.addIssue({
+        code: "custom",
+        path: ["DATABASE_URL"],
+        message:
+          "Invalid database adapter or target; local postgres requires a loopback URL and non-production environment",
+      });
+    }
     try {
       validateStripeConfig(value);
     } catch (error) {

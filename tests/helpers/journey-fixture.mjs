@@ -221,6 +221,7 @@ export function journeyFixture({ stripe } = {}) {
             LIVE_APP_HOST: "live.journey.invalid",
             DATABASE_URL:
               "postgresql://fixture:fixture@preview.database.invalid/postgres",
+            DATABASE_DRIVER: "neon",
             PREVIEW_DATABASE_HOST: "preview.database.invalid",
             LIVE_DATABASE_HOST: "live.database.invalid",
             UPSTASH_REDIS_URL: `redis://127.0.0.1:${redisPort}`,

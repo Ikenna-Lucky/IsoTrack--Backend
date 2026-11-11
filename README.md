@@ -97,6 +97,11 @@ your development or test destination.
 
 ### Install and configure
 
+For isolated local dashboard development, use the [Docker setup](docs/local-docker.md)
+instead of a hosted database. It provides persistent localhost-only PostgreSQL and
+Redis plus a guarded local adapter. The steps below describe the Neon setup used
+by hosted environments.
+
 ```sh
 bun install --frozen-lockfile
 ```
