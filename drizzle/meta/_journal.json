@@ -127,6 +127,13 @@
       "when": 1794182400001,
       "tag": "0017_collection_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794441600000,
+      "tag": "0018_driver_notifications",
+      "breakpoints": true
     }
   ]
 }

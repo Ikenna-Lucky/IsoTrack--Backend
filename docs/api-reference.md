@@ -157,3 +157,31 @@ or retried mail. Email already being sent cannot be recalled. Completed historic
 in-app events are not backfilled. The worker, Redis and configured mail transport
 must be running for asynchronous delivery. No additional database migration is
 needed for this change.
+
+
+## Driver notification preferences
+
+The existing GET/PATCH `/drivers/me/notifications` endpoints now govern three
+shipment events: newDelivery (assigned), deliveryComplete (confirmed handover)
+and deliveryFailed (an actual recorded failure). `push` is the legacy API field
+for the dashboard inbox; it does not register browser or device push. In-app and
+email delivery are independent. Defaults enable both for these three events.
+Other event fields remain stored for compatibility without delivery support.
+PATCH atomically merges changed event pairs into stored JSON so unrelated choices
+survive concurrent edits; supply both booleans for each changed pair. Concurrent
+changes to the same event still use the last committed pair.
+
+Migration `0018_driver_notifications.sql` captures two durable channel candidates
+with each supported event. Failure capture follows the structured exception
+record so return audit entries do not send repeated failed-attempt alerts.
+Workers recheck preferences, current assignment, fleet membership and active
+recipient status before dispatch. Opted-out candidates become skipped, existing
+inbox records remain, and email already sending cannot be recalled. No historical
+backfill is performed. Email links open `/driver/deliveries`.
+
+Apply `bun run db:migrate` before running the updated worker. Delivery requires
+Redis, NOTIFICATION_WORKERS_ENABLED=true and the existing configured mail
+transport. The currently checked local environment has workers disabled; it has
+not been changed to send external emails. Migration 0018 was applied locally.
+Disposable PostgreSQL and a local SMTP catcher verified delivery without sending
+real mail. No HTTP endpoint was added; Swagger descriptions and export updated.

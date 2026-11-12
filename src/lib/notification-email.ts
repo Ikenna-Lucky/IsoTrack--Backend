@@ -16,9 +16,21 @@ export function renderNotificationEmail(
   frontendUrl: string,
 ) {
   const business = email.recipientRole === "business";
-  const url = new URL(business ? "/business/shipments" : "/customer/track", frontendUrl);
-  if (!business) url.searchParams.set("id", email.trackingId);
-  const action = business ? "View your shipments" : "Track your shipment";
+  const driver = email.recipientRole === "driver";
+  const url = new URL(
+    business
+      ? "/business/shipments"
+      : driver
+        ? "/driver/deliveries"
+        : "/customer/track",
+    frontendUrl,
+  );
+  if (!business && !driver) url.searchParams.set("id", email.trackingId);
+  const action = business
+    ? "View your shipments"
+    : driver
+      ? "View your deliveries"
+      : "Track your shipment";
   const messageId = `<${createHash("sha256").update(email.eventId).digest("hex")}@notifications.isotrack.app>`;
   return {
     to: email.to,

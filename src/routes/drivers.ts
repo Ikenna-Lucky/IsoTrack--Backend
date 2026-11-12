@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { DRIVER_NOTIFICATION_DEFAULTS as DEFAULT_NOTIF_PREFS } from "../lib/driver-notification-preferences";
+import { eq, sql } from "drizzle-orm";
 import { authenticate, requireRole } from "@/middleware/auth";
 import {
   findDriverById,
@@ -129,17 +130,6 @@ driversRouter.patch(
 // ─── GET /drivers/me/notifications ───────────────────────────────────────────
 // Return the driver's stored notification preferences (or sensible defaults).
 
-const DEFAULT_NOTIF_PREFS = {
-  newDelivery: { push: true, email: true },
-  pickupReminder: { push: true, email: false },
-  deliveryComplete: { push: true, email: true },
-  deliveryFailed: { push: true, email: true },
-  customerMessage: { push: true, email: false },
-  ratingReceived: { push: true, email: false },
-  payoutProcessed: { push: true, email: true },
-  weeklyReport: { push: false, email: true },
-};
-
 driversRouter.get("/me/notifications", requireRole("driver"), async (c) => {
   const userId = c.get("userId" as never) as string;
   const driver = await findDriverByUserId(userId);
@@ -165,19 +155,22 @@ driversRouter.patch(
     const driver = await findDriverByUserId(userId);
     if (!driver) return error(c, "Driver profile not found", 404);
 
-    // Merge with existing prefs so a partial PATCH doesn't wipe unrelated keys
-    const existing =
-      (driver.notificationPreferences as Record<string, unknown>) ?? {};
-    const merged = { ...DEFAULT_NOTIF_PREFS, ...existing, ...body };
-
     const [updated] = await db
       .update(drivers)
-      .set({ notificationPreferences: merged, updatedAt: new Date() })
+      .set({
+        notificationPreferences: sql`coalesce(${drivers.notificationPreferences}, '{}'::jsonb) || ${JSON.stringify(body)}::jsonb`,
+        updatedAt: new Date(),
+      })
       .where(eq(drivers.id, driver.id))
       .returning();
 
+    if (!updated)
+      return error(c, "Failed to save notification preferences", 500);
     return success(c, {
-      data: updated?.notificationPreferences ?? merged,
+      data: {
+        ...DEFAULT_NOTIF_PREFS,
+        ...((updated.notificationPreferences as object) ?? {}),
+      },
       message: "Notification preferences saved",
     });
   },

@@ -595,7 +595,7 @@ for (const method of ["get", "patch"] as const)
       : {}),
     data: ref("DriverNotifications"),
     description:
-      "Driver only. PATCH merges supplied event objects with defaults/stored preferences. Preference names do not establish that payout, rating, messaging or every delivery channel exists.",
+      "Driver only. PATCH atomically merges supplied event objects; include both push and email for each changed event. GET/PATCH responses include defaults. newDelivery, deliveryComplete and deliveryFailed control assignment, confirmed-handover and actual failed-attempt notifications. push means dashboard inbox, not browser/device push. Email and in-app delivery are independent and rechecked at dispatch against current choices, assignment, active account and fleet membership. Opt-outs suppress queued delivery; existing inbox records remain. Emails already sending cannot be recalled. pickupReminder, customerMessage, ratingReceived, payoutProcessed and weeklyReport are stored compatibility fields without delivery. Notification workers and mail transport must be configured. No historical backfill.",
   });
 add({
   method: "get",
