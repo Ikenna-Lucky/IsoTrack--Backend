@@ -32,6 +32,7 @@ import { apiBodyBoundary } from "./middleware/api-protection";
 import { closeApiProtection } from "./services/api-protection";
 import { createReleaseRouter } from "./observability/release";
 import { database } from "./db";
+import { createApiDocsRouter } from "./routes/api-docs";
 
 // Hono app
 const app = new Hono();
@@ -42,6 +43,7 @@ app.use("*", prettyJSON());
 app.use("*", secureHeaders());
 app.use("*", apiCors(env.FRONTEND_URL));
 app.use("/api/v1/*", apiBodyBoundary());
+app.route("/", createApiDocsRouter());
 
 const operations = createOperationalRuntime();
 app.route("/", operations.router);

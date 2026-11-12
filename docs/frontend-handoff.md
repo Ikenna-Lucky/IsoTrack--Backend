@@ -1,5 +1,10 @@
 # Frontend integration contract
 
+Use [Swagger and the API integration guide](api-reference.md) and the
+[OpenAPI contract](openapi.json) for HTTP fields, responses and examples.
+This handoff adds workflow context; ordinary frontend integration should not
+require reading backend source.
+
 This document describes the updated backend candidate, not the older main
 deployment. Do not connect a new client to main and assume these contracts are
 deployed. Apply migrations through 0017 and promote/test the candidate on preview

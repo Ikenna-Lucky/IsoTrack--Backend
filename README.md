@@ -152,8 +152,18 @@ ledger entries to make startup pass. See [migrations](docs/migrations.md) and
 
 ## API and client integration
 
+**Start with Swagger:** run `bun run docs:serve` and open
+[the read-only reference](http://127.0.0.1:8001/docs/) without backend credentials.
+When the configured API is running, [interactive Swagger](http://localhost:8000/docs/)
+and [the OpenAPI endpoint](http://localhost:8000/openapi.json) use its actual origin/port.
+The checked-in [OpenAPI contract](docs/openapi.json) can be imported into client tools.
+See the [API integration guide](docs/api-reference.md) for authentication, cookies,
+workflows, Socket.IO and contract maintenance. Cookie refresh/logout must be tested
+from the configured trusted frontend origin, as explained in the guide.
+
 All application HTTP routes use `/api/v1`. This table identifies route groups;
-the linked documents and source handlers define payloads and authorization.
+the OpenAPI contract defines HTTP payloads and authorization, and the linked
+documents explain operational details.
 
 | Prefix                       | Purpose                                                          | Contract                                                                                                                 |
 | ---------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
