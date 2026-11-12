@@ -137,3 +137,23 @@ inventory, selected production validators and handler responses, validate exampl
 and exercise local Swagger serving. These checks reduce drift; they do not prove
 every response in every deployed environment. Database/provider integration suites
 remain separate evidence.
+
+
+## Business notification preferences
+
+`GET/PATCH /business/notifications` controls owner email for shipmentCreated,
+driverAssigned, pickedUp, outForDelivery, delivered and failed. Defaults enable
+all of these except pickedUp. Supply both email/sms booleans for each changed
+event; PATCH merges event objects at the top level and may return partial JSON.
+SMS, driverOnline and weeklyReport are stored compatibility fields, without
+implemented delivery. In-app notifications remain available regardless of email
+choices. Recovery, verification, recipient delivery-code and customer notification
+flows have separate policies.
+
+When the notification worker completes a new Business in-app shipment event, it
+atomically records the eligible email job. Dispatch checks current ownership,
+recipient activity and email preference again, so opting out suppresses queued
+or retried mail. Email already being sent cannot be recalled. Completed historical
+in-app events are not backfilled. The worker, Redis and configured mail transport
+must be running for asynchronous delivery. No additional database migration is
+needed for this change.

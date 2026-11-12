@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
 import type { SQL } from "drizzle-orm";
+import { businessShipmentEmailEnabled } from "../lib/business-notification-preferences.ts";
 import {
   claimOutboxStatement,
   outboxContextStatement,
@@ -15,6 +16,8 @@ export interface OutboxStore {
 const contextSchema = z.object({
   name: z.string(),
   email: z.string(),
+  recipientRole: z.enum(["business", "customer"]),
+  businessPreferences: z.unknown(),
   kind: z.enum(["shipment_status", "payment_confirmed"]),
   channel: z.enum(["in_app", "email"]),
   payload: z.object({
@@ -39,6 +42,7 @@ const contextSchema = z.object({
 });
 export interface NotificationEmail {
   eventId: string;
+  recipientRole?: "business" | "customer";
   to: string;
   name: string;
   trackingId: string;
@@ -89,10 +93,20 @@ export function createOutboxProcessor(
           ? `Payment of ${amount} for shipment ${context.payload.trackingId} has been confirmed.`
           : `Shipment ${context.payload.trackingId}: ${title.toLowerCase()}.`;
       if (context.channel === "in_app") {
-        await store.execute(completeInAppStatement(id, token, title, message));
+        await store.execute(completeInAppStatement(id, token, title, message,
+          context.recipientRole === "business" && context.kind === "shipment_status" &&
+          businessShipmentEmailEnabled(context.payload.status, context.businessPreferences)));
       } else {
+        // Recheck at send time: opting out also suppresses queued/retried emails.
+        // Recovery, recipient proof and customer emails use separate policies.
+        if (context.recipientRole === "business" &&
+          !businessShipmentEmailEnabled(context.payload.status, context.businessPreferences)) {
+          await store.execute(completeOutboxStatement(id, token, true));
+          return;
+        }
         await sendEmail({
           eventId: id,
+          recipientRole: context.recipientRole,
           to: z.string().email().parse(context.email),
           name: context.name,
           trackingId: context.payload.trackingId,

@@ -28,7 +28,9 @@ export function claimOutboxStatement(id: string, token: string) {
 }
 
 export function outboxContextStatement(id: string, token: string) {
-  return sql`select jsonb_build_object('name',u.name,'email',u.email,'payload',o.payload,'kind',o.kind,'channel',o.channel) as result from notification_outbox o
+  return sql`select jsonb_build_object('name',u.name,'email',u.email,'recipientRole',u.role,'businessPreferences',
+    (select b.notification_preferences from businesses b where b.id=s.business_id and b.user_id=u.id),
+    'payload',o.payload,'kind',o.kind,'channel',o.channel) as result from notification_outbox o
     join users u on u.id=o.recipient_id join shipments s on s.id=o.shipment_id
     where o.id=${id} and o.state='processing' and o.lease_token=${token}
       and o.lease_until>statement_timestamp() and ${eligible}`;
@@ -39,6 +41,7 @@ export function completeInAppStatement(
   token: string,
   title: string,
   message: string,
+  businessEmail = false,
 ) {
   return sql`with owned as materialized (
     select id from notification_outbox where id=${id} and channel='in_app' and state='processing' and lease_token=${token}
@@ -51,6 +54,13 @@ export function completeInAppStatement(
     select 'outbox_'||id,recipient_id,'push',${title},${message},'sent',
       jsonb_build_object('outboxId',id,'trackingId',payload->>'trackingId','status',payload->>'status')::text
     from recipient on conflict(id) do nothing returning id
+  ), captured_email as (
+    insert into notification_outbox(id,shipment_id,recipient_id,channel,kind,payload)
+    select o.id||'_email',o.shipment_id,o.recipient_id,'email',o.kind,o.payload
+      from recipient o join inserted n on n.id='outbox_'||o.id
+      join users u on u.id=o.recipient_id
+      where ${businessEmail} and u.role='business' and o.kind='shipment_status'
+    on conflict(id) do nothing returning id
   ) update notification_outbox set state=case when exists(select 1 from recipient) then 'delivered' else 'skipped' end,
     completed_at=statement_timestamp(),lease_token=null,lease_until=null,last_error=null
     where id in(select id from owned) returning jsonb_build_object('id',id) as result`;

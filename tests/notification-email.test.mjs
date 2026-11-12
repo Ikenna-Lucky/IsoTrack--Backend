@@ -32,3 +32,10 @@ test("notification email escapes untrusted content and uses configured tracking 
   );
   assert.match(outboxJobId("event:one"), /^[a-f0-9]{64}$/);
 });
+
+
+test("Business shipment emails link to the Business workspace", () => {
+  const email = renderNotificationEmail({ eventId: "business-event", recipientRole: "business", to: "owner@example.test", name: "Owner", title: "Shipment created", trackingId: "IST-1", message: "Created" }, "https://product.example.test");
+  assert.ok(email.text.includes("https://product.example.test/business/shipments"));
+  assert.equal(email.html.includes("/customer/"), false);
+});

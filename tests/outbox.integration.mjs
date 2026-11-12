@@ -145,6 +145,7 @@ beforeEach(async () => {
     sql`truncate shipments,shipment_events,payments,notification_outbox,notifications cascade`,
   );
   await postgres.query(sql`update users set is_active=true`);
+  await postgres.query(sql`update businesses set notification_preferences=null`);
   smtp.accepted.length = 0;
   smtp.reject(false);
 });
@@ -315,6 +316,7 @@ test("outbox failure rolls back payment success and paid shipment", async (t) =>
 });
 
 test("real Redis/BullMQ delivery creates one in-app notification per recipient despite duplicate publication", async (t) => {
+  await postgres.query(sql`update businesses set notification_preferences='{"shipmentCreated":{"email":false,"sms":false}}' where id='biz-a'`);
   await postgres.query(creation("in-app"));
   await Promise.all([
     dispatchOutbox(store, queue),
@@ -525,4 +527,31 @@ test("exhausted abandoned leases become dead letters and cleanup preserves unres
   );
   assert.equal((await store.execute(purgeOutboxStatement())).length, 1);
   assert.equal(await status(id), "dead");
+});
+
+
+test("Business email preferences preserve in-app updates and suppress queued emails before dispatch", async () => {
+  const process = createOutboxProcessor(store, send);
+  await postgres.query(creation("business-prefs"));
+  const inAppId = "shipment_created-business-prefs_business";
+  const emailId = `${inAppId}_email`;
+  await process(inAppId);
+  await process(inAppId);
+  assert.equal(await status(emailId), "pending");
+  assert.equal(await postgres.query(sql`select count(*) from notifications where user_id='owner-a'`), "1");
+  await postgres.query(sql`update businesses set notification_preferences='{"shipmentCreated":{"email":false,"sms":true}}' where id='biz-a'`);
+  await process(emailId);
+  assert.equal(await status(emailId), "skipped");
+  assert.equal(smtp.accepted.length, 0);
+  await postgres.query(creation("business-optout"));
+  await process("shipment_created-business-optout_business");
+  assert.equal(await status("shipment_created-business-optout_business_email"), "");
+  assert.equal(await postgres.query(sql`select count(*) from notifications where user_id='owner-a'`), "2");
+  await postgres.query(assigned("business-optout"));
+  await process("shipment_assigned-business-optout_business");
+  await process("shipment_assigned-business-optout_business_email");
+  await process("shipment_assigned-business-optout_email");
+  assert.equal(smtp.accepted.length, 2);
+  assert.equal(await status("shipment_assigned-business-optout_business_email"), "delivered");
+  assert.equal(await status("shipment_assigned-business-optout_email"), "delivered");
 });

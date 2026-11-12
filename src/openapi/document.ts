@@ -663,7 +663,7 @@ for (const [route, tag, input, read, update, readId, updateId, example] of [
     example,
     data: ref(update),
     description:
-      "Business owner only. Partial update. Preference writes merge at top level; provide both channel booleans for any supplied event. Notification preference PATCH returns stored JSON (possibly partial), whereas GET applies defaults. Currency preference does not change NGN checkout currency.",
+      "Business owner only. Partial update. Preference writes merge at top level; provide both channel booleans for any supplied event. Notification preference PATCH returns stored JSON (possibly partial), whereas GET applies defaults. Currency preference does not change NGN checkout currency. Business shipment email preferences are checked before enqueue and dispatch for shipmentCreated, driverAssigned, pickedUp, outForDelivery, delivered and failed. In-app notifications remain enabled. SMS, driverOnline and weeklyReport delivery are not implemented; stored choices do not enable those channels. Emails already sending cannot be recalled.",
   });
 }
 add({
