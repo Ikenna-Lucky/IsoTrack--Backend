@@ -4,6 +4,7 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY tsconfig.json ./
 COPY src ./src
+COPY scripts/swagger-assets.mjs ./scripts/swagger-assets.mjs
 RUN bun run build
 
 FROM oven/bun:1.3.12-slim
