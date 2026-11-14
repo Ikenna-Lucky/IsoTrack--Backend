@@ -1,7 +1,38 @@
 # Backend readiness register
 
-Latest scope transition: [backend handoff update, 2026-11-09](#backend-handoff-update--2026-11-09).
+Latest email integration: [Microsoft Graph update](#microsoft-graph-update--2026-11-13). Hosted acceptance remains unverified.
 Earlier dated entries below retain their original results and limitations.
+
+## Microsoft Graph update — 2026-11-13
+
+Scope: replace SMTP/Gmail/Nodemailer with personal Outlook Microsoft Graph HTTPS;
+complete frontend verification/recovery link destinations and prepare hosted
+acceptance. Earlier SMTP entries retain historical evidence and are not current
+configuration instructions. No deployment, real Microsoft authorization, external
+email delivery or Stripe provider exercise was performed in this slice.
+
+| Control                  | Current evidence                                                                                                                                                                                            | Status / next gate                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| PR-04 account lifecycle  | Existing single-use/expiry/credential-bound backend actions retained; frontend verification/recovery routes now implemented, with explicit POST confirmation and signup request integration.                | Local API evidence; browser and actual inbox acceptance pending.                       |
+| PR-05 sender credentials | MSAL delegated Mail.Send, configured-sender check, AES-GCM cache bound to app/mailbox, database refresh lease and stale-owner fencing.                                                                      | Local unit/PostgreSQL checks passed; real Microsoft consent/renewal pending.           |
+| PR-10 async delivery     | Production Graph sender tested through loopback HTTP fixtures; 202 acceptance distinguished from inbox receipt; bounded retries, dead letters, crash ambiguity and Retry-After scheduling retained/covered. | Local queue tests passed; provider delivery pending.                                   |
+| PR-16 configuration      | Gmail credentials and SMTP packages removed; Outlook settings required only when workers enabled. Migration 0019 adds encrypted authorization storage and was applied locally.                              | Configure/authorize the intended mailbox against the target deployment database later. |
+| PR-17 release acceptance | Hosted email, sandbox settlement/review and browser cross-domain session runbook prepared. Preview worker isolation remains enforced.                                                                       | Unverified until sender/deployment inputs exist and journeys execute.                  |
+
+Verification: 60 integration cases across account actions, delivery, assembled
+journeys, Driver notifications, outbox recovery, cache persistence and migrations
+passed across the main run and one corrected focused replay-test rerun. The replay
+assertion now checks the exact five recipient/channel candidates including the
+Driver alerts added by migration 0018. Initial runs also hit missing Bun/Docker
+timeouts; final targeted execution used the installed Bun executable and sequential
+fixtures. This is local evidence using a Graph HTTP fixture, not Microsoft inbox
+delivery. See [setup](microsoft-graph-email.md) and [hosted runbook](hosted-verification.md).
+
+Backend TypeScript/lint, 109 unit tests, generated OpenAPI validation and build
+passed. Frontend static checks and 59 tests passed; its build generated 26 pages. Visual
+browser acceptance remains outstanding per the user's preference to review in
+their own browser. No SMTP fallback remains. Revoked consent can require operator
+reauthorization; no permanent authorization or unlimited free sending is claimed.
 
 ## Scope and decisions
 
@@ -31,7 +62,7 @@ deployed observability, load testing and hosted recovery evidence remain substan
 | Shipment correctness   | Atomic events, conditional transitions, retry safety, assignment races, delivery proof and returns                  | Creation/update/history/outbox/saved results are atomic; creation and command replay, workflow versions, races, stale cycles and lost acknowledgements verified locally; Recipient-code delivery proof and failed-delivery/return custody verified locally; physical/recipient trust policy, client/hosted adoption and capacity outstanding                                                                            |
 | Payments               | Public signed callbacks, amount/currency checks, idempotency, reconciliation, refunds and sandbox evidence          | Shipment checkout guards, reconciliation, single applied receipts, additional-money review and verified full-refund resolution pass local SQL/HTTP/fault tests; actual Stripe sandbox, partial/applied refunds, disputes, abuse budgets and deployed operations outstanding                                                                                                                                             |
 | Tracking               | Authenticated assigned-driver writes, scoped subscriptions, revocation, reconnect and stale-location policy         | Socket authentication, per-event/per-delivery authorization, atomic GPS writes, bounded traffic and real client/PostgreSQL tests verified locally; minimal public-link status/date/event projection verified locally; frontend adoption, distributed adapter/budgets, shared public-read budgets verified locally; public-link lifecycle, hosted edge protection, deployed networking and capacity evidence outstanding |
-| Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; SMTP ambiguity documented; additional channel/preferences, provider/deployed evidence and alerting outstanding                                                                                                                                |
+| Notifications          | Durable dispatch, preferences enforced, bounded retries and replay, valid links                                     | Atomic outbox capture, deduplicated in-app delivery, email retries/dead letters/replay, configured escaped links, Redis loss and killed-worker recovery verified locally; Provider-acceptance ambiguity documented; Microsoft Graph replaces SMTP (see latest entry); additional channel/preferences, provider/deployed evidence and alerting outstanding                                                               |
 | Migrations             | Fresh install and supported upgrade tested; business preference columns included; historical journal handled safely | Production runner core verified with actual 0000–0015 SQL, fresh install, existing-account upgrade, rollback, concurrency and history validation in PostgreSQL; hosted Neon transport, legacy fleet FK reconciliation/validation and deployed upgrade evidence outstanding                                                                                                                                              |
 | Performance            | Agreed peak workload, latency/error targets, representative data, sustained and overload tests                      | Bounded cursor lists, seek plans and a 50,000-row/10-tenant local steady/burst/recovery baseline verified; 2,450 operations passed. Hosted transport, larger/skewed data, soak, workers and saturation remain unverified                                                                                                                                                                                                |
 | Delivery               | Versioned artifact promoted through staging, deployment checks and tested rollback                                  | Dev-only opt-in Render source release job, isolation guards, Docker proof and hosted smoke tooling prepared; local helper/fixture checks pass; container pull blocked by Docker Hub DNS, hosted configuration/release/rollback unverified                                                                                                                                                                               |
@@ -1480,7 +1511,6 @@ expected release SHA and rerun complete hosted smoke. Existing deployed SHA rema
 2775e05975faf9deb1f1d9ddc252f66646823862 and has not received this fix.
 Completion remains 8.5/10 pending successful hosted functional verification.
 
-
 ## 2026-11-06 — Hosted preview smoke passed
 
 Preview https://isotrack-backend-preview.onrender.com release
@@ -1505,7 +1535,6 @@ journey tests with real database/Redis, retry and cross-business assertions.
 Actual email/payment provider delivery remains a separate sandbox gate. Hosted
 recovery, monitoring/alert delivery, workload measurements and assembled frontend
 journeys remain outstanding; frontend work is still deferred.
-
 
 ## 2026-11-06 — Assembled backend delivery journeys
 
@@ -1584,7 +1613,7 @@ Checkout replay, unknown provider outcomes with the same immutable provider key,
 public signed settlement/replay, live-event and missing-signature rejection,
 unauthorized verification, forged redirect parameters, unpaid expiration and a
 new attempt after guard release. Report counts validated from JUnit; XML/JSON
-in reports/stripe-sandbox.*, fast evidence in reports/unit.*. Lint, TypeScript,
+in reports/stripe-sandbox._, fast evidence in reports/unit._. Lint, TypeScript,
 Bun build (959 modules, 3.59 MB), workflow YAML validation and diff checks passed.
 No migration or schema change.
 
@@ -1597,7 +1626,6 @@ refund policy and disputes remain outside the existing review-refund command.
 No frontend change, actual provider call, hosted write, commit, push, main change
 or deployment performed. docs/payments.md explains setup and remaining evidence.
 Completion remains 8.8/10 while actual provider verification is pending.
-
 
 ## 2026-11-07 — Actual Stripe sandbox Checkout prepared
 
@@ -1635,7 +1663,6 @@ Background reconciliation can settle too, so settlement alone is not attributed 
 a webhook. Failed/expired sandbox and supported refund/reconciliation provider cases
 remain subsequent verification work. Completion remains 8.8/10 pending these gates.
 
-
 ## 2026-11-07 — Actual sandbox webhook resend verified
 
 User reports initial checkout.session.completed delivery HTTP 200 in Stripe Dashboard
@@ -1658,7 +1685,6 @@ User test-card submission and unpaid-state verification pending; evidence in
 reports/stripe-provider-decline.json. Checkout URL and stable keys remain private
 in .verification. The successful-payment run is preserved separately.
 
-
 ## 2026-11-07 — Actual sandbox decline, expiry and retry verified
 
 User observed Stripe Checkout card-decline feedback for the separate synthetic
@@ -1672,7 +1698,7 @@ Called the preview authenticated cancellation endpoint for this exact test refer
 It retrieved/expired the provider session through the production reconciliation
 code, returned HTTP 200 and expired state. A fresh read-only transaction confirmed
 unpaid status, zero receipts and guard release. Reusing the original checkout key
-returned 409. A distinct retry key created a different actual cs_test_ session via
+returned 409. A distinct retry key created a different actual cs*test* session via
 HTTP 200; database now has two legitimate attempts (old expired, new open), one
 active guard, unpaid shipment and zero receipts. No card submitted for the new
 attempt. This is an operator-requested expiry, not a natural time-expiry rehearsal
@@ -1688,7 +1714,6 @@ Planning estimate advances to 9.0/10. Actual supported review/refund and interru
 settlement recovery evidence, deployed monitoring/alert delivery, hosted recovery,
 frontend adoption and capacity remain outstanding; no overall readiness claim.
 
-
 ## 2026-11-07 — Corrected actual webhook-resend chronology
 
 User clarified the earlier claimed resend had not yet occurred. Therefore the
@@ -1703,7 +1728,6 @@ now records this corrected sequence and fresh checkedAt timestamp. Provider
 delivery/transaction counts remain user-reported; database counts independently
 verified. This entry supersedes the earlier resend timing assertion. Planning
 estimate remains 9.0/10; overall readiness remains subject to outstanding gates.
-
 
 ## 2026-11-07 — Automatic reconciliation recovery exercise prepared
 
@@ -1726,7 +1750,6 @@ delivered for this session. Re-enable the same destination after observation and
 confirm restoration. Do not leave the exercise marked complete before restoration.
 Planning estimate remains 9.0/10; recovery behavior is not yet verified.
 
-
 ## 2026-11-07 — Scheduled recovery observed; webhook restoration pending
 
 User confirmed preview webhook destination disabled, then completed recovery test
@@ -1747,7 +1770,6 @@ Stripe. Do not attribute this exercise to natural provider outage or guaranteed
 always-on availability on Render Free. No code change/commit/push/deployment.
 Completion remains 9.0/10 until fault restoration is confirmed.
 
-
 ## 2026-11-07 — Recovery fault restored and exercise closed
 
 User explicitly confirms ISOTrack Preview Payments stayed disabled throughout
@@ -1764,7 +1786,6 @@ Planning estimate advances to 9.1/10; actual supported review/refund verificatio
 deployed monitoring/alert delivery, hosted recovery and other documented release
 gates remain outstanding. This is not an overall production-readiness verdict.
 
-
 ## 2026-11-07 — Review/refund exercise preparation
 
 Inspected recordRefund: supported scope includes received review balances caused
@@ -1773,10 +1794,10 @@ payments remain unchanged. Prepared a separate synthetic Checkout/reference
 IST-PAY-Ba4RbMuI_C-E5estsGCIzwyn, session cs_test_a145NXyF4tlZNT9yXf7b7f4FYVOwrhKIPHqrgvD3f09VQqO5h5LdZPkdry,
 on preview e1601f41d7245ca4c350db3ed149e43d4b5264f3. No card submitted and no refund initiated.
 
-Plan: temporarily postpone only this fixture's reconcile_after for a bounded hour
+Plan: temporarily postpone only this fixture's reconcile*after for a bounded hour
 (with original schedule journaled and compare-and-set requiring an unclaimed unpaid
 attempt), and ask user to pause only the preview sandbox webhook. After user pays,
-retrieve the actual cs_test_ session with the matching sandbox key, require local
+retrieve the actual cs_test* session with the matching sandbox key, require local
 unpaid/no-receipt state, cancel the synthetic shipment through the ordinary API,
 then explicitly verify/reconcile it into shipment_not_payable review. No SQL edits
 to money fields, review_reason, payment state or shipment status will fabricate the
@@ -1801,14 +1822,12 @@ reports/stripe-provider-refund.json remains passed=false. Private guarded helper
 .verification/refund-review.mjs is syntax-checked, not yet provider-executed.
 Completion remains 9.1/10 pending actual review/refund evidence and restoration.
 
-
 Refund exercise preflight: user saved sandbox credentials privately. Official SDK
 retrieved the expected real test Checkout, confirming sandbox account access and
 reference/session/amount/shipment binding. Provider session open/unpaid; local
 shipment/payment pending. Signing secret checked for configuration shape only.
 No card, refund, schedule hold or webhook setting changed by this preflight.
 Awaiting user pause of the preview destination before applying the bounded hold.
-
 
 Refund exercise: user confirms preview webhook disabled. Applied the guarded
 reconcile_after-only hold to the single matching synthetic payment, with original
@@ -1817,7 +1836,6 @@ Shipment remains unpaid and no receipts exist. No payment/review/money state
 was manually changed. Next user action is the test-card payment; before cancelling
 and reconciling, recheck the hold is active and no receipt was already applied.
 Restore this hold and the webhook as soon as review is established.
-
 
 ## 2026-11-07 — Actual review classification verified
 
@@ -1855,7 +1873,7 @@ Estimate remains 9.1/10; this evidence is sandbox-only.
 ## 2026-11-07 — Refunded payment survives paid-event replay
 
 User confirmed resending original checkout.session.completed event
- evt_1UZCvqPFS6zvOA2DP1OzsN0f to the preview destination with HTTP 200 delivery.
+evt_1UZCvqPFS6zvOA2DP1OzsN0f to the preview destination with HTTP 200 delivery.
 A subsequent read-only Neon snapshot, bound to the synthetic fixture and preview
 release e1601f41d7245ca4c350db3ed149e43d4b5264f3, confirms payment remains
 refunded, shipment cancelled/unpaid, receipts zero and checkout guards zero.
@@ -1869,7 +1887,6 @@ duplicate-recording and delayed paid-event replay exercise. No normal applied-
 payment or partial refund support, live-money verification, frontend readiness or
 capacity guarantee is implied. Planning estimate remains 9.1/10 until remaining
 release gates have their own evidence. No production code or deployment changed.
-
 
 ## 2026-11-08 — Hosted preview logical recovery verified
 
@@ -1916,7 +1933,6 @@ Hosted HTTP recovery, session/token invalidation, outbox/provider reconciliation
 scheduled backup/retention, traffic cutover, representative volume and capacity
 remain unverified. Source/target are in the same Neon project; project-loss and
 regional disaster recovery are not established. Keep recovery disconnected.
-
 
 ## 2026-11-08 — Full application recovery HTTP smoke verified
 
@@ -2079,4 +2095,3 @@ promote to the preview branch and confirm migrations/release identity/smoke.
 Main/live remain unchanged. Independently retained backups, confirmed alert
 delivery, legacy fleet-FK validation and public cutover remain operating/release
 obligations; frontend development does not certify them.
-

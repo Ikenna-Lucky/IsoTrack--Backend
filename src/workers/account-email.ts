@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { emailRetrySeconds } from "../lib/email-retry.ts";
 import type { OutboxStore } from "./outbox-processor.ts";
 import { actionToken, actionHash } from "../lib/account-action-token.ts";
 import {
@@ -104,8 +105,10 @@ export function createAccountEmailProcessor(
             !(await store.execute(finishAccountEmail(id, lease, "sent"))).length
           )
             throw new Error("Account email lease lost");
-        } catch {
-          await store.execute(finishAccountEmail(id, lease, "failed"));
+        } catch (cause) {
+          await store.execute(
+            finishAccountEmail(id, lease, "failed", emailRetrySeconds(cause)),
+          );
         }
       }),
     );

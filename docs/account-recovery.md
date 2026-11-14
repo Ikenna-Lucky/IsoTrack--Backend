@@ -1,5 +1,7 @@
 # Password recovery and email verification
 
+> Current transport: [Outlook Microsoft Graph HTTPS](microsoft-graph-email.md). SMTP-specific setup below is superseded; historical SMTP test evidence is retained as history.
+
 These are transactional emails, delivered through the existing Gmail SMTP
 configuration. Resend is installed but unused; marketing campaigns, subscriptions
 and unsubscribe workflows are outside this feature.

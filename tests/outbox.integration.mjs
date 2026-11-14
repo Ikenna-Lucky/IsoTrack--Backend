@@ -11,9 +11,9 @@ import { sql } from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import { Queue } from "bullmq";
 import IORedis from "ioredis";
-import nodemailer from "nodemailer";
+
 import { postgresFixture } from "./helpers/postgres.mjs";
-import { smtpFixture } from "./helpers/smtp.mjs";
+import { graphFixture, createGraphTestTransport } from "./helpers/graph.mjs";
 import {
   shipmentCreationStatement,
   shipmentTransitionStatement,
@@ -52,10 +52,10 @@ let redisStarted = false;
 let redis;
 let redisUrl;
 let queue;
-let smtp;
+let graph;
 let transport;
 const send = async (email) => {
-  await transport.sendMail({
+  await transport.send({
     from: "test@example.test",
     ...renderNotificationEmail(email, "https://app.example.test"),
   });
@@ -132,12 +132,8 @@ before(async () => {
   await once(redis, "ready");
   queue = new Queue(OUTBOX_QUEUE, { connection: redis });
   await queue.waitUntilReady();
-  smtp = await smtpFixture();
-  transport = nodemailer.createTransport({
-    host: "127.0.0.1",
-    port: smtp.port,
-    ignoreTLS: true,
-  });
+  graph = await graphFixture();
+  transport = createGraphTestTransport({ port: graph.port });
 });
 beforeEach(async () => {
   await redis.flushdb();
@@ -145,15 +141,17 @@ beforeEach(async () => {
     sql`truncate shipments,shipment_events,payments,notification_outbox,notifications cascade`,
   );
   await postgres.query(sql`update users set is_active=true`);
-  await postgres.query(sql`update businesses set notification_preferences=null`);
-  smtp.accepted.length = 0;
-  smtp.reject(false);
+  await postgres.query(
+    sql`update businesses set notification_preferences=null`,
+  );
+  graph.accepted.length = 0;
+  graph.reject(false);
 });
 after(async () => {
   if (queue) await queue.close();
   redis?.disconnect();
   transport?.close();
-  await smtp?.close();
+  await graph?.close();
   if (redisStarted)
     await docker("docker", ["stop", "--time", "1", redisContainer]);
   await postgres.stop();
@@ -316,7 +314,9 @@ test("outbox failure rolls back payment success and paid shipment", async (t) =>
 });
 
 test("real Redis/BullMQ delivery creates one in-app notification per recipient despite duplicate publication", async (t) => {
-  await postgres.query(sql`update businesses set notification_preferences='{"shipmentCreated":{"email":false,"sms":false}}' where id='biz-a'`);
+  await postgres.query(
+    sql`update businesses set notification_preferences='{"shipmentCreated":{"email":false,"sms":false}}' where id='biz-a'`,
+  );
   await postgres.query(creation("in-app"));
   await Promise.all([
     dispatchOutbox(store, queue),
@@ -340,7 +340,7 @@ test("real Redis/BullMQ delivery creates one in-app notification per recipient d
     await postgres.query(sql`select count(*) from notifications`),
     "2",
   );
-  assert.equal(smtp.accepted.length, 0);
+  assert.equal(graph.accepted.length, 0);
 });
 
 test("Redis publication timeout and lost queued data recover from durable pending rows", async (t) => {
@@ -406,9 +406,9 @@ test("expired leases can be reclaimed and old owners cannot commit delivery", as
   );
 });
 
-test("SMTP failures exhaust a bounded retry budget and explicit replay recovers a dead letter", async () => {
+test("Graph HTTP failures exhaust a bounded retry budget and explicit replay recovers a dead letter", async () => {
   const id = await emailFixture("retry");
-  smtp.reject(true);
+  graph.reject(true);
   const process = createOutboxProcessor(store, send);
   for (let attempt = 1; attempt <= 5; attempt++) {
     await assert.rejects(process(id), /Notification delivery failed/);
@@ -425,11 +425,11 @@ test("SMTP failures exhaust a bounded retry budget and explicit replay recovers 
   assert.equal(await status(id), "dead");
   assert.equal((await store.execute(dueOutboxStatement())).length, 0);
   assert.equal((await store.execute(replayOutboxStatement(id))).length, 1);
-  smtp.reject(false);
+  graph.reject(false);
   await process(id);
   await process(id);
   assert.equal(await status(id), "delivered");
-  assert.equal(smtp.accepted.length, 1);
+  assert.equal(graph.accepted.length, 1);
   assert.equal((await store.execute(replayOutboxStatement(id))).length, 0);
 });
 
@@ -452,7 +452,7 @@ test("inactive recipients and changed business ownership are skipped rather than
   );
 });
 
-test("worker killed after SMTP acceptance recovers with an explicit at-least-once duplicate window", async (t) => {
+test("worker killed after Graph HTTP acceptance recovers with an explicit at-least-once duplicate window", async (t) => {
   const id = await emailFixture("crash");
   const child = fork(
     fileURLToPath(new URL("./helpers/outbox-worker.mjs", import.meta.url)),
@@ -462,7 +462,7 @@ test("worker killed after SMTP acceptance recovers with an explicit at-least-onc
         ...process.env,
         TEST_POSTGRES_CONTAINER: postgres.container,
         TEST_REDIS_URL: redisUrl,
-        TEST_SMTP_PORT: String(smtp.port),
+        TEST_GRAPH_PORT: String(graph.port),
       },
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     },
@@ -481,7 +481,7 @@ test("worker killed after SMTP acceptance recovers with an explicit at-least-onc
       throw new Error(`Worker exited before sending: ${childOutput}`);
     }),
   ]);
-  assert.equal(smtp.accepted.length, 1);
+  assert.equal(graph.accepted.length, 1);
   const exited = once(child, "exit");
   child.kill("SIGKILL");
   await exited;
@@ -496,8 +496,8 @@ test("worker killed after SMTP acceptance recovers with an explicit at-least-onc
   });
   t.after(() => runtime.close());
   await waitFor(async () => (await status(id)) === "delivered", 30000);
-  assert.equal(smtp.accepted.length, 2);
-  const ids = smtp.accepted.map(
+  assert.equal(graph.accepted.length, 2);
+  const ids = graph.accepted.map(
     (message) =>
       message
         .replace(/\r?\n[ \t]+/g, " ")
@@ -529,7 +529,6 @@ test("exhausted abandoned leases become dead letters and cleanup preserves unres
   assert.equal(await status(id), "dead");
 });
 
-
 test("Business email preferences preserve in-app updates and suppress queued emails before dispatch", async () => {
   const process = createOutboxProcessor(store, send);
   await postgres.query(creation("business-prefs"));
@@ -538,20 +537,41 @@ test("Business email preferences preserve in-app updates and suppress queued ema
   await process(inAppId);
   await process(inAppId);
   assert.equal(await status(emailId), "pending");
-  assert.equal(await postgres.query(sql`select count(*) from notifications where user_id='owner-a'`), "1");
-  await postgres.query(sql`update businesses set notification_preferences='{"shipmentCreated":{"email":false,"sms":true}}' where id='biz-a'`);
+  assert.equal(
+    await postgres.query(
+      sql`select count(*) from notifications where user_id='owner-a'`,
+    ),
+    "1",
+  );
+  await postgres.query(
+    sql`update businesses set notification_preferences='{"shipmentCreated":{"email":false,"sms":true}}' where id='biz-a'`,
+  );
   await process(emailId);
   assert.equal(await status(emailId), "skipped");
-  assert.equal(smtp.accepted.length, 0);
+  assert.equal(graph.accepted.length, 0);
   await postgres.query(creation("business-optout"));
   await process("shipment_created-business-optout_business");
-  assert.equal(await status("shipment_created-business-optout_business_email"), "");
-  assert.equal(await postgres.query(sql`select count(*) from notifications where user_id='owner-a'`), "2");
+  assert.equal(
+    await status("shipment_created-business-optout_business_email"),
+    "",
+  );
+  assert.equal(
+    await postgres.query(
+      sql`select count(*) from notifications where user_id='owner-a'`,
+    ),
+    "2",
+  );
   await postgres.query(assigned("business-optout"));
   await process("shipment_assigned-business-optout_business");
   await process("shipment_assigned-business-optout_business_email");
   await process("shipment_assigned-business-optout_email");
-  assert.equal(smtp.accepted.length, 2);
-  assert.equal(await status("shipment_assigned-business-optout_business_email"), "delivered");
-  assert.equal(await status("shipment_assigned-business-optout_email"), "delivered");
+  assert.equal(graph.accepted.length, 2);
+  assert.equal(
+    await status("shipment_assigned-business-optout_business_email"),
+    "delivered",
+  );
+  assert.equal(
+    await status("shipment_assigned-business-optout_email"),
+    "delivered",
+  );
 });

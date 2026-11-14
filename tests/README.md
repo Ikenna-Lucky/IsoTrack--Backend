@@ -10,7 +10,7 @@ Run `npm run test:unit` with Node 24.12.0 or the CI-pinned version.
 Run `npm run test:integration` with Docker running. Database fixtures pull
 `postgres:17-alpine`, create uniquely named temporary containers, and stop them
 after the run. Those PostgreSQL containers publish no host ports; Redis and
-HTTP/SMTP/socket/monitoring fixtures use ephemeral local ports as described below.
+HTTP/Graph HTTP/socket/monitoring fixtures use ephemeral local ports as described below.
 Fixtures use synthetic data and never read the application `.env` or connect to
 the application database. Test passwords are deliberately non-secret and confined
 to disposable services.
@@ -50,8 +50,8 @@ If forcibly interrupted, inspect the `isotrack-socket-test-*` prefix as well and
 stop only the particular abandoned test container.
 
 The outbox suite adds `isotrack-outbox-test-*` PostgreSQL and
-`isotrack-outbox-redis-test-*` Redis containers, plus a local SMTP protocol sink.
-It executes real BullMQ workers and intentionally kills a child worker after SMTP
+`isotrack-outbox-redis-test-*` Redis containers, plus a local Graph HTTP fixture.
+It executes real BullMQ workers and intentionally kills a child worker after Graph HTTP
 acceptance, then starts a replacement to verify recovery and the duplicate-send
 window. It also verifies rollback, Redis timeout/data loss, leases, retries,
 dead-letter replay, recipient checks and cleanup. Synthetic timestamps accelerate
@@ -83,9 +83,9 @@ entrypoint against a hosted database remain unverified. See docs/migrations.md.
 
 The account-action suite creates `isotrack-identity-test-*` PostgreSQL, applies the
 complete migration journal through the production runner, starts a real Hono HTTP
-server and a local SMTP sink, and uses the actual socket peer adapter. It verifies
+server and a local Graph HTTP sink, and uses the actual socket peer adapter. It verifies
 recovery/verification, bcrypt changes, signed JWT/session revocation, concurrent
-tokens, PostgreSQL resend/peer limits, rollback on notice failure, SMTP exhaustion,
+tokens, PostgreSQL resend/peer limits, rollback on notice failure, Graph HTTP exhaustion,
 lease fencing, injected completion loss and cleanup. No application credentials
 or external mail provider are used. See docs/account-recovery.md for boundaries.
 
@@ -132,14 +132,14 @@ actual EXPLAIN ANALYZE JSON is retained in reports/shipment-page-plan-\*.json.
 The standard unit/integration discovery includes these cases. See
 docs/shipment-pagination.md for contract and workload limits.
 
-The delivery suite creates `isotrack-delivery-test-*` PostgreSQL and local HTTP/SMTP
+The delivery suite creates `isotrack-delivery-test-*` PostgreSQL and local HTTP/Graph HTTP
 servers. It uses the complete migration chain, signed sessions, production code/
-proof functions, real SMTP capture and the durable email worker. It checks guest
+proof functions, Graph HTTP fixture capture and the durable email worker. It checks guest
 recipients, retry/race/fault recovery, authorization, expiry/lockout/resend limits,
 SQL bypass, private fields, worker fencing, queue metrics and retention. The
 checkout suite now applies the complete schema including email/session invalidation
 and explicitly establishes fresh fixture sessions after changing email. Test mail
-never leaves the local SMTP sink. See docs/delivery-confirmation.md.
+never leaves the local Graph HTTP sink. See docs/delivery-confirmation.md.
 
 ## Failed delivery and return coverage
 

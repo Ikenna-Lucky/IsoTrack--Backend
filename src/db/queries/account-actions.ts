@@ -102,10 +102,11 @@ export function finishAccountEmail(
   id: string,
   lease: string,
   state: "sent" | "skipped" | "failed",
+  retrySeconds = 0,
 ) {
   return sql`update account_actions set
     delivery_state=case when ${state}='failed' then case when attempts>=5 then 'dead' else 'pending' end else ${state} end,
-    available_at=statement_timestamp()+ least(300,power(2,attempts)::int*5)*interval '1 second',
+    available_at=statement_timestamp()+greatest(least(300,power(2,attempts)::int*5),${retrySeconds}::int)*interval '1 second',
     lease_token=null,lease_until=null
     where id=${id} and delivery_state='processing' and lease_token=${lease} and lease_until>statement_timestamp()
     returning json_build_object('completed',true) as result`;

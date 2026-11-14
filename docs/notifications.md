@@ -1,5 +1,7 @@
 # Durable notification delivery
 
+> Current transport: [Outlook Microsoft Graph HTTPS](microsoft-graph-email.md). SMTP-specific setup below is superseded; historical SMTP test evidence is retained as history.
+
 Shipment and payment changes now capture notification work in PostgreSQL. Redis
 is a delivery transport; losing queued Redis data does not erase pending work.
 The dispatcher and worker start with the API process. They need a running process

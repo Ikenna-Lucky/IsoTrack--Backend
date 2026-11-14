@@ -134,6 +134,13 @@
       "when": 1794441600000,
       "tag": "0018_driver_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794528000000,
+      "tag": "0019_microsoft_mail_cache",
+      "breakpoints": true
     }
   ]
 }

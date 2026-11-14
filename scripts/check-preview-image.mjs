@@ -12,8 +12,6 @@ const env = {
   UPSTASH_REDIS_URL: "redis://preview-redis.invalid:6379",
   JWT_SECRET: "isolated-container-fixture-signature-key",
   JWT_REFRESH_SECRET: "isolated-container-fixture-refresh-key",
-  GMAIL_USER: "preview@example.invalid",
-  GMAIL_APP_PASSWORD: "disabled-preview-only",
   DEPLOYMENT_ENV: "preview",
   NODE_ENV: "production",
   NOTIFICATION_WORKERS_ENABLED: "false",

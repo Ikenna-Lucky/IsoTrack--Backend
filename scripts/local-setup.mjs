@@ -68,9 +68,6 @@ const config = {
     local && current.DELIVERY_CODE_SECRET
       ? current.DELIVERY_CODE_SECRET
       : secret(),
-  GMAIL_USER: "local@example.test",
-  GMAIL_APP_PASSWORD: "local-disabled-placeholder",
-  EMAIL_FROM: "ISOTrack Local <local@example.test>",
   NOTIFICATION_WORKERS_ENABLED: "false",
   RETENTION_ENABLED: "false",
   STRIPE_MODE: "disabled",

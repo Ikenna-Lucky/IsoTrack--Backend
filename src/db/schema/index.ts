@@ -17,3 +17,4 @@ export * from "./driver-invitations";
 export * from "./delivery-confirmations";
 export * from "./shipment-exceptions";
 export * from "./retention-runs";
+export * from "./microsoft-mail-cache";

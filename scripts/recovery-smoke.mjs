@@ -255,8 +255,6 @@ try {
       LIVE_APP_HOST: "live.recovery.invalid",
       JWT_SECRET: randomBytes(48).toString("base64url"),
       JWT_REFRESH_SECRET: randomBytes(48).toString("base64url"),
-      GMAIL_USER: "disabled@example.invalid",
-      GMAIL_APP_PASSWORD: "disabled-recovery-only",
     };
     await startApp();
     assert.equal((await request("/health/live")).status, 200);

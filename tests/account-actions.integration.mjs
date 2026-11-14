@@ -9,9 +9,9 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import { sql } from "drizzle-orm";
 import { compare, hash } from "bcryptjs";
 import { SignJWT } from "jose";
-import nodemailer from "nodemailer";
+
 import { postgresFixture } from "./helpers/postgres.mjs";
-import { smtpFixture } from "./helpers/smtp.mjs";
+import { graphFixture, createGraphTestTransport } from "./helpers/graph.mjs";
 import { runMigrations } from "../src/db/migration-runner.ts";
 import { createAccountActionRouter } from "../src/routes/account-actions.ts";
 import { createAccountEmailProcessor } from "../src/workers/account-email.ts";
@@ -45,11 +45,11 @@ const store = {
   },
 };
 const raw = (text) => postgres.query(sql.raw(text));
-let server, base, smtp, transport, originalHash;
+let server, base, graph, transport, originalHash;
 let sent = [];
 let errors = 0;
 const send = async (email) => {
-  await transport.sendMail({ from: "test@example.test", ...email });
+  await transport.send({ from: "test@example.test", ...email });
   sent.push(email);
 };
 let processEmails;
@@ -113,15 +113,8 @@ before(async () => {
     fileURLToPath(new URL("../drizzle", import.meta.url)),
   );
   originalHash = await hash("OriginalPassword1", 4);
-  smtp = await smtpFixture();
-  transport = nodemailer.createTransport({
-    host: "127.0.0.1",
-    port: smtp.port,
-    secure: false,
-    ignoreTLS: true,
-    connectionTimeout: 2000,
-    socketTimeout: 2000,
-  });
+  graph = await graphFixture();
+  transport = createGraphTestTransport({ port: graph.port });
   processEmails = createAccountEmailProcessor(
     store,
     key,
@@ -161,7 +154,7 @@ before(async () => {
 after(async () => {
   if (server) await new Promise((resolve) => server.close(resolve));
   if (transport) transport.close();
-  if (smtp) await smtp.close();
+  if (graph) await graph.close();
   await postgres.stop();
 });
 beforeEach(async () => {
@@ -173,8 +166,8 @@ beforeEach(async () => {
     ('inactive','inactive@example.test',${originalHash},'Inactive','customer',false,false),
     ('verified','verified@example.test',${originalHash},'Verified','business',true,true)`);
   sent = [];
-  smtp.accepted.length = 0;
-  smtp.reject(false);
+  graph.accepted.length = 0;
+  graph.reject(false);
   errors = 0;
 });
 
@@ -201,14 +194,14 @@ test("request responses conceal account existence, state and resend suppression"
   assert.equal(sent.length, 0);
 });
 
-test("durable SMTP delivery carries a trusted fragment link and no plaintext token is stored", async () => {
+test("durable Graph HTTP delivery carries a trusted fragment link and no plaintext token is stored", async () => {
   await request(
     "/forgot-password",
     { email: " MEMBER@example.test " },
     { host: "evil.example.test", "x-forwarded-host": "evil.example.test" },
   );
   await processEmails();
-  assert.equal(smtp.accepted.length, 1);
+  assert.equal(graph.accepted.length, 1);
   assert.equal(sent.length, 1);
   const url = new URL(sent[0].text.match(/https:\/\/\S+/)[0]);
   assert.equal(url.origin, "https://app.example.test");
@@ -221,7 +214,7 @@ test("durable SMTP delivery carries a trusted fragment link and no plaintext tok
   assert.equal(JSON.parse(stored).token_hash, actionHash(token));
   assert.equal(JSON.parse(stored).delivery_state, "sent");
   await processEmails();
-  assert.equal(smtp.accepted.length, 1);
+  assert.equal(graph.accepted.length, 1);
 });
 
 test("HTTP password reset hashes the new password, consumes once, revokes JWT sessions and queues a notice", async () => {
@@ -586,9 +579,9 @@ test("failure creating the durable security notice rolls back the reset, token a
   );
 });
 
-test("SMTP failure retries durably up to five attempts and stale accounts never receive links", async () => {
+test("Graph HTTP failure retries durably up to five attempts and stale accounts never receive links", async () => {
   await action();
-  smtp.reject(true);
+  graph.reject(true);
   for (let i = 0; i < 5; i++) {
     await processEmails();
     await raw(
@@ -599,8 +592,8 @@ test("SMTP failure retries durably up to five attempts and stale accounts never 
     await raw("select delivery_state || ':' || attempts from account_actions"),
     "dead:5",
   );
-  assert.equal(smtp.accepted.length, 0);
-  smtp.reject(false);
+  assert.equal(graph.accepted.length, 0);
+  graph.reject(false);
   await raw(
     "update account_action_limits set next_at=now()-interval '1 minute'",
   );
@@ -616,7 +609,7 @@ test("SMTP failure retries durably up to five attempts and stale accounts never 
   );
 });
 
-test("expired leases are reclaimed, old workers are fenced and ambiguous SMTP delivery can duplicate", async () => {
+test("expired leases are reclaimed, old workers are fenced and ambiguous Graph HTTP delivery can duplicate", async () => {
   const reset = await action();
   assert.equal(
     (await store.execute(claimAccountEmails("old-worker"))).length,
@@ -660,7 +653,7 @@ test("expired leases are reclaimed, old workers are fenced and ambiguous SMTP de
     "update account_actions set available_at=now()-interval '1 minute'",
   );
   await processEmails();
-  assert.equal(smtp.accepted.length, 2);
+  assert.equal(graph.accepted.length, 2);
   assert.equal(sent[0].messageId, sent[1].messageId);
   assert.equal(await raw("select delivery_state from account_actions"), "sent");
 });

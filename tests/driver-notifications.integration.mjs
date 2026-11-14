@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { EmailRetryAfter } from "../src/lib/email-retry.ts";
 import { before, beforeEach, after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { sql } from "drizzle-orm";
-import nodemailer from "nodemailer";
+
 import { postgresFixture } from "./helpers/postgres.mjs";
-import { smtpFixture } from "./helpers/smtp.mjs";
+import { graphFixture, createGraphTestTransport } from "./helpers/graph.mjs";
 import { runMigrations } from "../src/db/migration-runner.ts";
 import { createOutboxProcessor } from "../src/workers/outbox-processor.ts";
 import { renderNotificationEmail } from "../src/lib/notification-email.ts";
@@ -17,7 +18,7 @@ const store = {
     return result ? result.split("\n").map((line) => JSON.parse(line)) : [];
   },
 };
-let smtp, transport, processEvent;
+let graph, transport, processEvent;
 before(async () => {
   await pg.start();
   await runMigrations(
@@ -41,14 +42,10 @@ before(async () => {
   await query(`insert into users(id,email,password_hash,name,role) values ('owner','owner@example.test','hash','Owner','business'),('rider','rider@example.test','hash','Rider','driver'),('other','other@example.test','hash','Other','driver');
     insert into businesses(id,user_id,business_name) values('biz','owner','Business');
     insert into drivers(id,user_id,business_id,vehicle_type,vehicle_plate) values('driver','rider','biz','bike','TEST'),('other-driver','other','biz','bike','OTHER');`);
-  smtp = await smtpFixture();
-  transport = nodemailer.createTransport({
-    host: "127.0.0.1",
-    port: smtp.port,
-    ignoreTLS: true,
-  });
+  graph = await graphFixture();
+  transport = createGraphTestTransport({ port: graph.port });
   processEvent = createOutboxProcessor(store, async (email) =>
-    transport.sendMail({
+    transport.send({
       from: "test@example.test",
       ...renderNotificationEmail(email, "https://app.example.test"),
     }),
@@ -58,12 +55,12 @@ beforeEach(async () => {
   await query(
     "truncate shipments,notifications cascade; update users set is_active=true; update drivers set business_id='biz',notification_preferences=null",
   );
-  smtp.accepted.length = 0;
-  smtp.reject(false);
+  graph.accepted.length = 0;
+  graph.reject(false);
 });
 after(async () => {
   transport?.close();
-  await smtp?.close();
+  await graph?.close();
   await pg.stop();
 });
 async function assignment(label = "one", driver = "driver") {
@@ -82,7 +79,7 @@ async function preferences(value) {
     sql`update drivers set notification_preferences=${JSON.stringify(value)}::jsonb where id='driver'`,
   );
 }
-test("assignment captures independent inbox/email jobs once and sends real local SMTP", async () => {
+test("assignment captures independent inbox/email jobs once and sends local Graph HTTP fixture", async () => {
   const id = await assignment();
   assert.equal(
     await query(
@@ -98,8 +95,8 @@ test("assignment captures independent inbox/email jobs once and sends real local
     await query("select count(*) from notifications where user_id='rider'"),
     "1",
   );
-  assert.equal(smtp.accepted.length, 1);
-  assert.ok(smtp.accepted[0].includes("/driver/deliveries"));
+  assert.equal(graph.accepted.length, 1);
+  assert.ok(graph.accepted[0].includes("/driver/deliveries"));
 });
 test("current choices suppress queued channels independently and preserve existing inbox history", async () => {
   const first = await assignment("first");
@@ -110,7 +107,7 @@ test("current choices suppress queued channels independently and preserve existi
   await processEvent(`${first}_in_app`);
   await processEvent(`${first}_email`);
   assert.equal(await state(`${first}_in_app`), "skipped");
-  assert.equal(smtp.accepted.length, 1);
+  assert.equal(graph.accepted.length, 1);
   const second = await assignment("second");
   await preferences({ newDelivery: { push: true, email: false } });
   await processEvent(`${second}_in_app`);
@@ -127,7 +124,7 @@ test("current choices suppress queued channels independently and preserve existi
   );
   const other = await assignment("other", "other-driver");
   await processEvent(`${other}_email`);
-  assert.equal(smtp.accepted.length, 2);
+  assert.equal(graph.accepted.length, 2);
 });
 test("reassignment, inactivity and missing fleet membership suppress queued driver delivery", async () => {
   for (const change of [
@@ -145,7 +142,7 @@ test("reassignment, inactivity and missing fleet membership suppress queued driv
     assert.equal(await state(`${id}_email`), "skipped");
     assert.equal(await state(`${id}_in_app`), "skipped");
   }
-  assert.equal(smtp.accepted.length, 0);
+  assert.equal(graph.accepted.length, 0);
 });
 test("only actual failures create failed-attempt alerts; return audit entries do not", async () => {
   await assignment();
@@ -159,7 +156,7 @@ test("only actual failures create failed-attempt alerts; return audit entries do
     "2",
   );
   await processEvent("shipment_failed_driver_email");
-  assert.equal(smtp.accepted.length, 1);
+  assert.equal(graph.accepted.length, 1);
   await query(
     "insert into shipment_events(id,shipment_id,status,message) values('return','one','failed','Return requested'); insert into shipment_exceptions(id,shipment_id,actor_id,action,note,version,attempt_number) values('return','one','owner','return_request','',3,1)",
   );
@@ -170,21 +167,21 @@ test("only actual failures create failed-attempt alerts; return audit entries do
     "0",
   );
 });
-test("failed SMTP delivery rechecks opt-out before retry", async () => {
+test("failed Graph HTTP delivery rechecks opt-out before retry", async () => {
   const id = await assignment();
-  smtp.reject(true);
+  graph.reject(true);
   await assert.rejects(
     processEvent(`${id}_email`),
     /Notification delivery failed/,
   );
-  smtp.reject(false);
+  graph.reject(false);
   await preferences({ newDelivery: { push: true, email: false } });
   await pg.query(
     sql`update notification_outbox set available_at=now() where id=${`${id}_email`}`,
   );
   await processEvent(`${id}_email`);
   assert.equal(await state(`${id}_email`), "skipped");
-  assert.equal(smtp.accepted.length, 0);
+  assert.equal(graph.accepted.length, 0);
 });
 
 test("confirmed-delivery events honor their own channel preferences", async () => {
@@ -200,5 +197,22 @@ test("confirmed-delivery events honor their own channel preferences", async () =
   await processEvent("shipment_completed_driver_email");
   assert.equal(await state("shipment_completed_driver_in_app"), "delivered");
   assert.equal(await state("shipment_completed_driver_email"), "skipped");
-  assert.equal(smtp.accepted.length, 0);
+  assert.equal(graph.accepted.length, 0);
+});
+
+test("provider Retry-After persists the next email attempt instead of burning retries immediately", async () => {
+  const id = `${await assignment()}_email`;
+  const defer = createOutboxProcessor(store, async () => {
+    throw new EmailRetryAfter(120000);
+  });
+  await assert.rejects(defer(id), /Notification delivery failed/);
+  const seconds = Number(
+    await pg.query(
+      sql`select extract(epoch from available_at-statement_timestamp())::int from notification_outbox where id=${id}`,
+    ),
+  );
+  assert.ok(seconds >= 110 && seconds <= 120);
+  assert.equal(await state(id), "pending");
+  await processEvent(id);
+  assert.equal(graph.accepted.length, 0);
 });

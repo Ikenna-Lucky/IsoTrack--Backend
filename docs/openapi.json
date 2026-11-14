@@ -1600,7 +1600,7 @@
           "Account recovery"
         ],
         "summary": "Request password recovery email",
-        "description": "Maximum 4 KiB body. 202 is deliberately identical for eligible/ineligible accounts and does not prove delivery. Email depends on configured account-action secret, worker and SMTP. INVALID_INPUT=400; ACCOUNT_ACTION_UNAVAILABLE=503.",
+        "description": "Maximum 4 KiB body. 202 is deliberately identical for eligible/ineligible accounts and does not prove delivery. Email depends on configured account-action secret, worker and authorized Outlook Microsoft Graph sender. INVALID_INPUT=400; ACCOUNT_ACTION_UNAVAILABLE=503.",
         "security": [],
         "requestBody": {
           "required": true,
@@ -1785,7 +1785,7 @@
           "Account recovery"
         ],
         "summary": "Request email verification",
-        "description": "Maximum 4 KiB body. 202 is deliberately identical for eligible/ineligible accounts and does not prove delivery. Email depends on configured account-action secret, worker and SMTP. INVALID_INPUT=400; ACCOUNT_ACTION_UNAVAILABLE=503.",
+        "description": "Maximum 4 KiB body. 202 is deliberately identical for eligible/ineligible accounts and does not prove delivery. Email depends on configured account-action secret, worker and authorized Outlook Microsoft Graph sender. INVALID_INPUT=400; ACCOUNT_ACTION_UNAVAILABLE=503.",
         "security": [],
         "requestBody": {
           "required": true,

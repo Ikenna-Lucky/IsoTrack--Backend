@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { before, beforeEach, after, test } from "node:test";
 import { once } from "node:events";
 import { io } from "socket.io-client";
-import nodemailer from "nodemailer";
+
 import { journeyFixture } from "./helpers/journey-fixture.mjs";
-import { smtpFixture } from "./helpers/smtp.mjs";
+import { graphFixture, createGraphTestTransport } from "./helpers/graph.mjs";
 import { createDeliveryEmailProcessor } from "../src/workers/delivery-email.ts";
 
 const fixture = journeyFixture();
@@ -15,7 +15,7 @@ let mail;
 
 before(async () => {
   await fixture.start();
-  mail = await smtpFixture();
+  mail = await graphFixture();
 });
 beforeEach(async () => {
   // Each scenario enrolls its own actors through the real application API.
@@ -407,18 +407,13 @@ for (const lostAcknowledgement of [false, true]) {
       (await result(repeatedIssue, 200)).challengeId,
       challenge.challengeId,
     );
-    const transport = nodemailer.createTransport({
-      host: "127.0.0.1",
-      port: mail.port,
-      secure: false,
-      ignoreTLS: true,
-    });
+    const transport = createGraphTestTransport({ port: mail.port });
     try {
       const dispatch = createDeliveryEmailProcessor(
         fixture.store,
         fixture.deliverySecret,
         async (email) => {
-          await transport.sendMail({ from: "journey@example.test", ...email });
+          await transport.send({ from: "journey@example.test", ...email });
         },
       );
       await dispatch();
@@ -429,7 +424,7 @@ for (const lostAcknowledgement of [false, true]) {
     assert.equal(mail.accepted.length, 1);
     assert.match(mail.accepted[0], /recipient@example.test/);
     const code = /\bis (\d{8})\./.exec(mail.accepted[0])?.[1];
-    assert.ok(code, "Recipient SMTP inbox must contain the delivery code");
+    assert.ok(code, "Local Graph HTTP capture must contain the delivery code");
     const driverChallenge = await result(
       await request(`${path}/delivery-code`, { actor: driver }),
       200,

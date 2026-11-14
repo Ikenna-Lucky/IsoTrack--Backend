@@ -62,7 +62,7 @@ flowchart LR
     DB --> Outbox[Durable notification outbox]
     Outbox --> Worker[BullMQ dispatch / delivery]
     Worker --> Redis
-    Worker --> SMTP[SMTP email]
+    Worker --> Graph[Microsoft Graph HTTPS email]
     API <--> Stripe[Stripe sandbox]
     Stripe --> Webhook[Signed webhook]
     Webhook --> DB
@@ -79,9 +79,8 @@ accessed through test adapters where documented; a plain local PostgreSQL URL is
 not a drop-in replacement for the application's Neon HTTP connection.
 
 **Stack:** TypeScript, Bun, Hono, PostgreSQL/Neon, Drizzle ORM and SQL migrations,
-Redis, BullMQ, Socket.IO, Stripe SDK, Nodemailer, Zod, jose, Prometheus metrics and
-GitHub Actions. The active email transport is SMTP; an installed provider SDK does
-not mean that provider is part of the verified delivery path.
+Redis, BullMQ, Socket.IO, Stripe SDK, MSAL Node, Zod, jose, Prometheus metrics and
+GitHub Actions. Email uses an authorized personal Outlook mailbox through Microsoft Graph HTTPS. See docs/microsoft-graph-email.md.
 
 ## Local setup
 
@@ -90,7 +89,7 @@ not mean that provider is part of the verified delivery path.
 - Node.js **24.12.0** and Bun **1.3.12**, matching the CI configuration.
 - A separate development Neon database and a reachable Redis service.
 - Docker for the integration suites, local recovery drill and monitoring fixtures.
-- SMTP configuration if you intend to exercise external email delivery.
+- An authorized Outlook sender if you intend to exercise external email delivery.
 
 All commands below run from this repository root. Never use a live database as
 your development or test destination.
@@ -109,24 +108,22 @@ bun install --frozen-lockfile
 Copy `.env.example` to `.env` using your editor, then replace the placeholders
 privately. The example is a configuration reference, not working credentials.
 
-| Setting                                          | Purpose                                                                               |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                                   | Development Neon PostgreSQL connection, including its TLS parameters.                 |
-| `UPSTASH_REDIS_URL`                              | Redis connection; despite the variable name, Render Key Value is also supported.      |
-| `JWT_SECRET`, `JWT_REFRESH_SECRET`               | Independently generated signing secrets, at least 32 characters each.                 |
-| `APP_URL`, `FRONTEND_URL`                        | Backend and trusted frontend origins for this environment.                            |
-| `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `EMAIL_FROM` | SMTP configuration; use an app password, never the account password.                  |
-| `NOTIFICATION_WORKERS_ENABLED`                   | Set `false` initially so restored or pending work is not dispatched unexpectedly.     |
-| `STRIPE_MODE`                                    | Keep `disabled` until deliberately configuring the sandbox integration.               |
-| `RETENTION_ENABLED`                              | Keep `false` until reviewing the retention policy and dry-run results.                |
-| `DELIVERY_CODE_SECRET`                           | Independent 32-byte hex key for delivery proof; blank disables issuance/confirmation. |
-| `ACCOUNT_ACTION_SECRET`                          | Independent 32-byte hex key for recovery/verification email links.                    |
-| `METRICS_TOKEN`                                  | Optional independent 32–128 character URL-safe token; blank disables `/metrics`.      |
+| Setting                                                                         | Purpose                                                                               |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                                  | Development Neon PostgreSQL connection, including its TLS parameters.                 |
+| `UPSTASH_REDIS_URL`                                                             | Redis connection; despite the variable name, Render Key Value is also supported.      |
+| `JWT_SECRET`, `JWT_REFRESH_SECRET`                                              | Independently generated signing secrets, at least 32 characters each.                 |
+| `APP_URL`, `FRONTEND_URL`                                                       | Backend and trusted frontend origins for this environment.                            |
+| `MICROSOFT_MAIL_CLIENT_ID`, `MICROSOFT_MAIL_SENDER`, `MICROSOFT_MAIL_CACHE_KEY` | Microsoft app ID, personal Outlook sender and independent cache encryption key.       |
+| `NOTIFICATION_WORKERS_ENABLED`                                                  | Set `false` initially so restored or pending work is not dispatched unexpectedly.     |
+| `STRIPE_MODE`                                                                   | Keep `disabled` until deliberately configuring the sandbox integration.               |
+| `RETENTION_ENABLED`                                                             | Keep `false` until reviewing the retention policy and dry-run results.                |
+| `DELIVERY_CODE_SECRET`                                                          | Independent 32-byte hex key for delivery proof; blank disables issuance/confirmation. |
+| `ACCOUNT_ACTION_SECRET`                                                         | Independent 32-byte hex key for recovery/verification email links.                    |
+| `METRICS_TOKEN`                                                                 | Optional independent 32–128 character URL-safe token; blank disables `/metrics`.      |
 
 `NOTIFICATION_WORKERS_ENABLED` defaults to `true` in code, so set it explicitly
-when starting an isolated environment. SMTP fields are required by environment
-validation even when workers are disabled; configuring a field does not prove
-email delivery. Enable workers only with an intended recipient/delivery setup.
+when starting an isolated environment. Outlook settings may stay blank while workers are disabled. Apply migration 0019 and authorize the sender before enabling workers. Configuration does not prove delivery.
 
 Generate fresh secrets locally; do not reuse preview/live keys. Keep `.env`,
 private operator files, tokens, database dumps and backup keys out of Git. Leave
@@ -199,12 +196,12 @@ The integration command needs Docker and sufficient resources for disposable
 services. Bun must be available on PATH for assembled-app tests; the relevant
 fixtures also accept `BUN_EXECUTABLE`. Images may need downloading on first use.
 
-| Layer                          | What it establishes                                                                                                                           |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fast tests                     | Validation, token/signature handling, handler behavior, failure boundaries and tooling rules.                                                 |
-| Real-service integration       | PostgreSQL transactions/constraints, Redis budgets/queues, races, rollback and injected failures; HTTP, sockets and local SMTP where covered. |
-| Assembled application journeys | Real Bun entrypoint and authentication with disposable services; vendor transport substitutions are stated in the test documentation.         |
-| Hosted/provider exercises      | Explicit preview checks, actual Stripe sandbox behavior and hosted recovery; separate private configuration and evidence.                     |
+| Layer                          | What it establishes                                                                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fast tests                     | Validation, token/signature handling, handler behavior, failure boundaries and tooling rules.                                                                 |
+| Real-service integration       | PostgreSQL transactions/constraints, Redis budgets/queues, races, rollback and injected failures; HTTP, sockets and a local Graph HTTP fixture where covered. |
+| Assembled application journeys | Real Bun entrypoint and authentication with disposable services; vendor transport substitutions are stated in the test documentation.                         |
+| Hosted/provider exercises      | Explicit preview checks, actual Stripe sandbox behavior and hosted recovery; separate private configuration and evidence.                                     |
 
 The test runner produces JUnit and JSON reports under ignored `reports/` and
 rejects empty results, failures, cancellations, skips and todos. Test code being
@@ -257,7 +254,7 @@ PostgreSQL/Redis or reuse live signing/provider secrets.
 | `GET /metrics`        | Token-protected Prometheus exposition; 404 when disabled.                             |
 
 Readiness is not a full customer journey check and does not establish Redis,
-SMTP or Stripe availability. Protected endpoints can fail closed with 503 when
+Microsoft Graph or Stripe availability. Protected endpoints can fail closed with 503 when
 Redis request protection is unavailable even while database readiness is healthy.
 
 Logs use structured events and request IDs. Prometheus/Alertmanager configuration

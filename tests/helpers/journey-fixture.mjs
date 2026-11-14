@@ -229,8 +229,6 @@ export function journeyFixture({ stripe } = {}) {
             LIVE_REDIS_HOST: "live.redis.invalid",
             JWT_SECRET: randomUUID() + randomUUID(),
             JWT_REFRESH_SECRET: randomUUID() + randomUUID(),
-            GMAIL_USER: "disabled@example.invalid",
-            GMAIL_APP_PASSWORD: "disabled-fixture-only",
             DELIVERY_CODE_SECRET: this.deliverySecret,
             STRIPE_MODE: stripe ? "sandbox" : "disabled",
             ...(stripe

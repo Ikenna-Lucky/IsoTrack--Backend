@@ -30,7 +30,7 @@ let server,
   base,
   failAfterCommit = false;
 before(async () => {
-  mail = await smtpFixture();
+  mail = await graphFixture();
   await pg.start();
   await runMigrations(
     {
@@ -143,8 +143,8 @@ import { deliveryCode } from "../src/lib/delivery-code.ts";
 import { backlogStatement } from "../src/observability/backlog.ts";
 import { purgeDeliveryConfirmations } from "../src/db/queries/delivery-operations.ts";
 import { createDeliveryEmailProcessor } from "../src/workers/delivery-email.ts";
-import nodemailer from "nodemailer";
-import { smtpFixture } from "./helpers/smtp.mjs";
+
+import { graphFixture, createGraphTestTransport } from "./helpers/graph.mjs";
 const deliverySecret = "ab".repeat(32);
 let mail;
 test("new delivered inserts are rejected and retention cleanup preserves current work", async () => {
@@ -230,7 +230,7 @@ async function snapshot() {
     ),
   );
 }
-test("guest code issuance is private, durable and delivered through real SMTP", async () => {
+test("guest code issuance is private, durable and delivered through Graph HTTP fixture", async () => {
   await query("update shipments set customer_id=null");
   const v = await ready(),
     d = await issue(v),
@@ -245,16 +245,11 @@ test("guest code issuance is private, durable and delivered through real SMTP", 
     "select coalesce(jsonb_agg(parameters),'[]')::text from idempotency_requests",
   );
   assert.ok(!records.includes(code));
-  const transport = nodemailer.createTransport({
-    host: "127.0.0.1",
-    port: mail.port,
-    secure: false,
-    ignoreTLS: true,
-  });
+  const transport = createGraphTestTransport({ port: mail.port });
   const before = mail.accepted.length;
   try {
     await createDeliveryEmailProcessor(store, deliverySecret, async (email) => {
-      await transport.sendMail({ from: "test@example.test", ...email });
+      await transport.send({ from: "test@example.test", ...email });
     })();
   } finally {
     transport.close();
@@ -360,7 +355,21 @@ test("confirmation is atomic and same-key replay survives response loss", async 
   const s = await snapshot();
   assert.equal(s.events, 1);
   assert.equal(s.consumed, 1);
-  assert.equal(s.notices, 3);
+  assert.equal(s.notices, 5);
+  assert.deepEqual(
+    (
+      await query(
+        "select recipient_id||':'||channel from notification_outbox order by 1",
+      )
+    ).split("\n"),
+    [
+      "customer:email",
+      "customer:in_app",
+      "owner:in_app",
+      "rider:email",
+      "rider:in_app",
+    ],
+  );
 });
 test("wrong-code attempts are committed, idempotent, capped and cannot be reset by new keys", async () => {
   const d = await issue(await ready());
@@ -496,10 +505,10 @@ test("resend rotates proof, fences old emails/codes and enforces durable cooldow
   assert.equal(sent[0].to, "other-guest@example.test");
   assert.equal((await confirm(second, undefined, "new-code")).status, 200);
 });
-test("SMTP failures exhaust retries and secret rotation cannot send a usable old code", async () => {
+test("Graph HTTP failures exhaust retries and secret rotation cannot send a usable old code", async () => {
   const d = await issue(await ready());
   const fail = createDeliveryEmailProcessor(store, deliverySecret, async () => {
-    throw new Error("SMTP fixture failure");
+    throw new Error("Graph HTTP fixture failure");
   });
   for (let i = 0; i < 5; i++) {
     await fail();

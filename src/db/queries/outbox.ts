@@ -79,9 +79,13 @@ export function completeOutboxStatement(
     where id=${id} and state='processing' and lease_token=${token} and lease_until>statement_timestamp() returning jsonb_build_object('id',id) as result`;
 }
 
-export function failOutboxStatement(id: string, token: string) {
+export function failOutboxStatement(
+  id: string,
+  token: string,
+  retrySeconds = 0,
+) {
   return sql`update notification_outbox set state=case when attempts>=5 then 'dead' else 'pending' end,
-    available_at=statement_timestamp()+least(60,5*power(2,attempts-1))*interval '1 second',
+    available_at=statement_timestamp()+greatest(least(60,5*power(2,attempts-1)),${retrySeconds}::int)*interval '1 second',
     lease_token=null,lease_until=null,last_error='DELIVERY_FAILED'
     where id=${id} and state='processing' and lease_token=${token} and lease_until>statement_timestamp() returning jsonb_build_object('id',id) as result`;
 }

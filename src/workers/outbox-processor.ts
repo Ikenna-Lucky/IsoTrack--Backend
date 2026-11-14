@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
+import { emailRetrySeconds } from "../lib/email-retry.ts";
 import type { SQL } from "drizzle-orm";
 import { driverShipmentNotificationEnabled } from "../lib/driver-notification-preferences.ts";
 import { businessShipmentEmailEnabled } from "../lib/business-notification-preferences.ts";
@@ -146,9 +147,11 @@ export function createOutboxProcessor(
         if (!(await store.execute(completeOutboxStatement(id, token))).length)
           throw new Error("Lease lost after delivery");
       }
-    } catch {
+    } catch (cause) {
       // Persist a stable diagnostic code; provider errors may contain addresses.
-      await store.execute(failOutboxStatement(id, token));
+      await store.execute(
+        failOutboxStatement(id, token, emailRetrySeconds(cause)),
+      );
       throw new Error("Notification delivery failed");
     }
   };

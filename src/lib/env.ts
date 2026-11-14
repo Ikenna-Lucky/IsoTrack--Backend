@@ -4,6 +4,10 @@ import { trustedProxyAddresses } from "./request-peer";
 import { assertPreviewIsolation } from "./preview-isolation";
 import { validateStripeConfig } from "./stripe-config";
 import { databaseConfig } from "./database-config";
+import {
+  microsoftMailFields,
+  microsoftMailConfig,
+} from "./microsoft-mail-config";
 
 const tokenLifetime = z.string().refine((value) => {
   try {
@@ -86,11 +90,7 @@ const envSchema = z
         .optional(),
     ),
 
-    GMAIL_USER: z.string().email("GMAIL_USER must be a valid Gmail address"),
-    GMAIL_APP_PASSWORD: z
-      .string()
-      .min(16, "GMAIL_APP_PASSWORD must be a 16-char App Password"),
-    EMAIL_FROM: z.string().default("IsoTrack <noreply@isotrack.app>"),
+    ...microsoftMailFields,
 
     // Phase 8
     TWILIO_ACCOUNT_SID: z.string().optional(),
@@ -101,6 +101,18 @@ const envSchema = z
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
   })
   .superRefine((value, context) => {
+    if (value.NOTIFICATION_WORKERS_ENABLED) {
+      try {
+        microsoftMailConfig(value);
+      } catch {
+        context.addIssue({
+          code: "custom",
+          path: ["MICROSOFT_MAIL_CLIENT_ID"],
+          message:
+            "Email workers require Outlook client ID, sender address and cache encryption key. Authorize the sender before enabling workers.",
+        });
+      }
+    }
     try {
       databaseConfig(value);
     } catch {

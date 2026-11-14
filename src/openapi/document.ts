@@ -414,7 +414,7 @@ for (const [route, id, summary] of [
       message: "If the account is eligible, an email will be sent.",
     },
     description:
-      "Maximum 4 KiB body. 202 is deliberately identical for eligible/ineligible accounts and does not prove delivery. Email depends on configured account-action secret, worker and SMTP. INVALID_INPUT=400; ACCOUNT_ACTION_UNAVAILABLE=503.",
+      "Maximum 4 KiB body. 202 is deliberately identical for eligible/ineligible accounts and does not prove delivery. Email depends on configured account-action secret, worker and authorized Outlook Microsoft Graph sender. INVALID_INPUT=400; ACCOUNT_ACTION_UNAVAILABLE=503.",
   });
 add({
   method: "post",
