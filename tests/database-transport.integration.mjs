@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { createDatabaseTransport } from "../src/db/transport.ts";
 import { runMigrations } from "../src/db/migration-runner.ts";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 
 const exec = promisify(execFile);
 test(
@@ -66,7 +67,8 @@ test(
           transport.transaction(statements.map(compile), { timeoutMs: 120000 }),
       };
       const folder = fileURLToPath(new URL("../drizzle", import.meta.url));
-      assert.equal(await runMigrations(store, folder), 18);
+      const migrations = readMigrationFiles({ migrationsFolder: folder });
+      assert.equal(await runMigrations(store, folder), migrations.length);
       assert.equal(await runMigrations(store, folder), 0);
       await transport.query(
         "create table adapter_probe(id integer primary key)",

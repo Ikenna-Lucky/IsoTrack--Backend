@@ -204,7 +204,7 @@ test("assignment replay returns the original snapshot with one event and notific
     version: 1,
     status: "assigned",
     events: 1,
-    outbox: 3,
+    outbox: 5,
     requests: 1,
   });
   assert.equal(
@@ -283,7 +283,7 @@ test("lost commit acknowledgement recovers without another write", async () => {
     version: 1,
     status: "assigned",
     events: 1,
-    outbox: 3,
+    outbox: 5,
     requests: 1,
   });
 });

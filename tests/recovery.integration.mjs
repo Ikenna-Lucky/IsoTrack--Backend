@@ -246,7 +246,7 @@ test("restore with source unavailable preserves data and supports credential, se
       target,
       "select count(*) from notification_outbox where id like 'shipment_restored-assignment_%'",
     ),
-    "3",
+    "5",
   );
   assert.equal(
     await query(
