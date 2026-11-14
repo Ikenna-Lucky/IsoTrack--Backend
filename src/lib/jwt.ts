@@ -5,8 +5,6 @@ import type { UserRole } from "@/types";
 import { requireSessionClaims } from "./session-claims";
 import { tokenDurationSeconds } from "./token-duration";
 
-// ─── Payload ──────────────────────────────────────────────────────────────────
-
 export interface AccessTokenPayload extends JWTPayload {
   sub: string; // userId
   role: UserRole;
@@ -21,8 +19,6 @@ export interface RefreshTokenPayload extends JWTPayload {
   generation: number;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function accessSecret() {
   return new TextEncoder().encode(env.JWT_SECRET);
 }
@@ -30,8 +26,6 @@ function accessSecret() {
 function refreshSecret() {
   return new TextEncoder().encode(env.JWT_REFRESH_SECRET);
 }
-
-// ─── Sign ─────────────────────────────────────────────────────────────────────
 
 export async function createAccessToken(
   userId: string,
@@ -61,8 +55,6 @@ export async function createRefreshToken(userId: string, sid: string, generation
     .sign(refreshSecret());
 }
 
-// ─── Verify ───────────────────────────────────────────────────────────────────
-
 export async function verifyAccessToken(
   token: string,
 ): Promise<AccessTokenPayload> {
@@ -78,9 +70,6 @@ export async function verifyRefreshToken(
   requireSessionClaims(payload, true);
   return payload as RefreshTokenPayload;
 }
-
-
-// ─── Cookie max-age ───────────────────────────────────────────────────────────
 
 export function refreshTokenMaxAge(): number {
   return tokenDurationSeconds(env.JWT_REFRESH_EXPIRES_IN);

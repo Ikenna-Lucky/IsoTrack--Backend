@@ -1,13 +1,11 @@
 import { pgEnum } from "drizzle-orm/pg-core";
 
-// ─── User ─────────────────────────────────────────────────────────────────────
 export const userRoleEnum = pgEnum("user_role", [
   "business",
   "driver",
   "customer",
 ]);
 
-// ─── Driver ───────────────────────────────────────────────────────────────────
 export const vehicleTypeEnum = pgEnum("vehicle_type", [
   "bike",
   "car",
@@ -20,7 +18,6 @@ export const driverStatusEnum = pgEnum("driver_status", [
   "offline",
 ]);
 
-// ─── Shipment ─────────────────────────────────────────────────────────────────
 export const shipmentStatusEnum = pgEnum("shipment_status", [
   "pending",
   "assigned",
@@ -32,7 +29,6 @@ export const shipmentStatusEnum = pgEnum("shipment_status", [
   "cancelled",
 ]);
 
-// ─── Notification ─────────────────────────────────────────────────────────────
 export const notificationTypeEnum = pgEnum("notification_type", [
   "email",
   "sms",
@@ -44,7 +40,6 @@ export const notificationStatusEnum = pgEnum("notification_status", [
   "failed",
 ]);
 
-// ─── Payment ──────────────────────────────────────────────────────────────────
 export const paymentStatusEnum = pgEnum("payment_status", [
   "pending",
   "success",

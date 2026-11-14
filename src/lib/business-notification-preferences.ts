@@ -4,7 +4,7 @@ const events = {
   delivered: ["delivered", true], failed: ["failed", true],
 } as const;
 
-/** Match the defaults returned by GET /business/notifications; unknown events are separate flows. */
+// Keep these fallbacks in sync with GET /business/notifications.
 export function businessShipmentEmailEnabled(status: string, preferences: unknown): boolean {
   if (!(Object.hasOwn(events, status))) return false;
   const [event, fallback] = events[status as keyof typeof events];

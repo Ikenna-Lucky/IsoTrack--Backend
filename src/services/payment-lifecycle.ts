@@ -115,8 +115,7 @@ export function createPaymentLifecycle({
         throw new Error(
           "Manual reconciliation required: original provider retry window or configuration unavailable",
         );
-      // Recovery reuses the exact immutable parameters and original provider key.
-      // Never create a replacement when the original provider outcome is unknown.
+      // Retry with the original parameters and key: the first request may have succeeded.
       session = await client.checkout.sessions.create(parameters.params, {
         idempotencyKey: `isotrack_${String(row.requestId)}`,
       });

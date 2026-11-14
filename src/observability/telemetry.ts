@@ -18,8 +18,7 @@ type Event =
   | "retention_failed"
   | "retention_completed";
 
-// Log fields are an allowlist. Errors, SQL, URLs, bodies and headers never enter
-// the sink, even if an upstream caller accidentally supplies them.
+// Only allowlisted fields reach the log sink; callers may pass sensitive data.
 export function createEventLogger(
   sink: (line: string) => void = (line) => console.info(line),
 ) {

@@ -11,8 +11,6 @@ import { db } from "@/db";
 import { shipments } from "@/db/schema";
 import type { NewShipment, Shipment } from "@/db/schema";
 
-// ─── Read ──────────────────────────────────────────────────────────────────────
-
 // Payment commands need an ownership check, not the complete shipment graph.
 export async function findShipmentById(id: string, actor: ShipmentActor) {
   const [row] = await db
@@ -28,8 +26,6 @@ export async function findShipmentById(id: string, actor: ShipmentActor) {
     .limit(1);
   return row;
 }
-
-// ─── Write ─────────────────────────────────────────────────────────────────────
 
 export async function transitionShipment(
   actor: ShipmentActor,

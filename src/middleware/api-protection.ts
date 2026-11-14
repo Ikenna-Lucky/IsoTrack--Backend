@@ -114,7 +114,7 @@ export function createApiProtection(deps: {
     };
 }
 
-/** A common outer bound runs before authentication, JSON validation or providers. */
+// Limit body size and read time before auth, JSON parsing or provider calls.
 export function apiBodyBoundary(readTimeoutMs = 10000): MiddlewareHandler {
   if (!Number.isSafeInteger(readTimeoutMs) || readTimeoutMs < 1)
     throw new Error("Invalid body deadline");

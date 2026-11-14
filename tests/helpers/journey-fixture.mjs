@@ -119,8 +119,7 @@ export function journeyFixture({ stripe } = {}) {
         fileURLToPath(new URL("../../drizzle", import.meta.url)),
       );
 
-      // Neon-shaped HTTP responses, backed by actual PostgreSQL bound queries.
-      // This substitutes vendor transport, never SQL results or database behavior.
+      // Emulate Neon HTTP responses while executing bound queries against PostgreSQL.
       proxy = createServer(async (request, response) => {
         let client;
         try {

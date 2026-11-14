@@ -392,8 +392,8 @@ test("real Prometheus scrapes SQL-backed review metrics and Alertmanager deliver
   const amPort = await readyContainerPort(am, 9093);
   await writeFile(
     join(folder, "prometheus.yml"),
-    // Match the production scrape cadence. A 1s scrape also imposed a 1s
-    // deadline on the Docker/psql adapter during parallel integration work.
+    // Use the production scrape interval; 1s also gives the Docker/psql adapter
+    // only 1s to respond, which can time out when suites run together.
     `global:\n  scrape_interval: 15s\n  scrape_timeout: 10s\n  evaluation_interval: 1s\nrule_files: [/config/alerts.yml]\nalerting:\n  alertmanagers:\n    - static_configs:\n        - targets: [alertmanager:9093]\nscrape_configs:\n  - job_name: isotrack\n    metrics_path: /metrics\n    authorization:\n      type: Bearer\n      credentials: ${token}\n    static_configs:\n      - targets: [host.docker.internal:${port}]\n`,
   );
   const prom = `isotrack-monitor-prom-${id}`;

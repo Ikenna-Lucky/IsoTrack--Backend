@@ -42,8 +42,7 @@ const result = spawnSync(
   process.execPath,
   [
     "--test",
-    // Bound simultaneous Docker fixtures on developer machines and CI runners.
-    // Races within each suite still exercise concurrent production requests.
+    // Limit Docker fixtures running at once; concurrency tests within each suite still run.
     ...(suite === "integration" ? ["--test-concurrency=2"] : []),
     "--test-reporter=spec",
     "--test-reporter=junit",

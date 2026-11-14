@@ -124,8 +124,8 @@ export function createAccountActionRouter({
       await store.execute(
         issueAccountAction(input.email, purpose, id, actionHash(token)),
       );
-      // Both eligible and ineligible requests share a minimum response window.
-      // This reduces obvious timing differences; it is not constant-time HTTP.
+      // Use the same minimum delay whether the account is eligible or not.
+      // This reduces timing differences but does not make HTTP constant-time.
       await delay(
         Math.max(0, 300 + randomInt(0, 51) - (performance.now() - started)),
       );

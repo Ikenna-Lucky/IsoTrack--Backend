@@ -13,7 +13,7 @@ export async function openSession(user: User) {
 }
 
 export async function rotateSession(user: User, payload: RefreshTokenPayload) {
-  // Sign before consuming the generation so a signing failure cannot consume it.
+  // Sign first so a signing failure leaves the refresh generation usable.
   const tokens = await issueTokens(user, payload.sid, payload.generation + 1, payload.exp!);
   const result = await db.execute(rotateSessionStatement(payload.sid, user.id, payload.generation));
   const row = result.rows[0];

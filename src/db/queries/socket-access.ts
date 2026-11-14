@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { SocketIdentity, LocationPayload } from "../../socket/protocol";
 
-/** One indexed session lookup per identity, in bounded batches rather than N+1. */
+// Check sessions in batches to avoid a separate query for each socket.
 export function socketAccessStatement(
   identities: readonly SocketIdentity[],
   trackingId?: string,
@@ -25,8 +25,8 @@ export function socketAccessStatement(
       and u.is_active and u.credential_version=a.credential_version and ${shipment}`;
 }
 
-/** Assignment, fleet, session, event order and write frequency share one UPDATE.
- * Competing updates recheck the shipment row after acquiring its lock. */
+// Check access, event order and update frequency in the same UPDATE.
+// PostgreSQL rechecks the shipment after waiting for a competing writer.
 export function recordSocketLocationStatement(
   identity: SocketIdentity,
   location: LocationPayload,

@@ -1,6 +1,6 @@
 export const stripeApiVersion = "2026-10-28.endive";
 
-/** Public hosting and payment mode are independent. This portfolio accepts no live keys. */
+// Payments stay in sandbox mode, including on production deployments.
 export function validateStripeConfig(config: Record<string, unknown>) {
   const mode = config.STRIPE_MODE ?? "disabled";
   if (mode !== "disabled" && mode !== "sandbox")

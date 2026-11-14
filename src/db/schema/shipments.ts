@@ -32,7 +32,6 @@ export const shipments = pgTable(
     returnState: text("return_state").notNull().default("none"),
     returnedAt: timestamp("returned_at", { withTimezone: true }),
 
-    // Parties
     businessId: text("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "restrict" }),
@@ -43,23 +42,19 @@ export const shipments = pgTable(
       onDelete: "set null",
     }),
 
-    // Package info
     description: text("description").notNull(),
     weightKg: real("weight_kg").notNull(),
     dimensions: jsonb("dimensions"), // { length, width, height }
 
-    // Locations
     pickupAddress: jsonb("pickup_address").notNull(),
     deliveryAddress: jsonb("delivery_address").notNull(),
-    currentLocation: jsonb("current_location"), // { lat, lng } — live updated
+    currentLocation: jsonb("current_location"), // { lat, lng }
 
-    // Timestamps
     scheduledPickup: timestamp("scheduled_pickup", { withTimezone: true }),
     actualPickup: timestamp("actual_pickup", { withTimezone: true }),
     estimatedDelivery: timestamp("estimated_delivery", { withTimezone: true }),
     actualDelivery: timestamp("actual_delivery", { withTimezone: true }),
 
-    // Financials (amounts in kobo — smallest NGN unit)
     priceKobo: integer("price_kobo").notNull(),
     isPaid: boolean("is_paid").default(false).notNull(),
 

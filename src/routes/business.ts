@@ -15,8 +15,8 @@ export const businessRouter = new Hono();
 
 businessRouter.use("*", authenticate, requireRole("business"));
 
-// Registration creates the profile atomically. Legacy inconsistencies require
-// explicit repair, rather than writes or arbitrary profile selection during GET.
+// Registration creates the profile. Missing or duplicate profiles need repair;
+// a GET must not create one or pick an arbitrary match.
 async function ensureBusiness(userId: string) {
   const rows = await db
     .select({ id: businesses.id })
@@ -40,7 +40,6 @@ const updateProfileSchema = z.object({
     .optional(),
 });
 
-// GET /business/profile
 businessRouter.get("/profile", async (c) => {
   const userId = c.get("userId" as never) as string;
   const biz = await ensureBusiness(userId);
@@ -55,7 +54,6 @@ businessRouter.get("/profile", async (c) => {
   return success(c, { data: { ...full, user: sanitizeUser(full.user) } });
 });
 
-// PATCH /business/profile
 businessRouter.patch(
   "/profile",
   zValidator("json", updateProfileSchema),
@@ -75,7 +73,6 @@ businessRouter.patch(
   },
 );
 
-// GET /business/analytics
 businessRouter.route("/", createBusinessAnalyticsRouter(writeStore));
 
 const notifPrefsSchema = z.object({
@@ -91,7 +88,6 @@ const notifPrefsSchema = z.object({
   weeklyReport: z.object({ email: z.boolean(), sms: z.boolean() }).optional(),
 });
 
-// GET /business/notifications
 businessRouter.get("/notifications", async (c) => {
   const userId = c.get("userId" as never) as string;
   const biz = await ensureBusiness(userId);
@@ -117,7 +113,6 @@ businessRouter.get("/notifications", async (c) => {
   });
 });
 
-// PATCH /business/notifications
 businessRouter.patch(
   "/notifications",
   zValidator("json", notifPrefsSchema),
@@ -146,8 +141,6 @@ businessRouter.patch(
   },
 );
 
-// ─── Preferences ──────────────────────────────────────────────────────────────
-
 const preferencesSchema = z.object({
   timezone: z.string().optional(),
   currency: z.string().optional(),
@@ -157,7 +150,6 @@ const preferencesSchema = z.object({
   autoRefresh: z.boolean().optional(),
 });
 
-// GET /business/preferences
 businessRouter.get("/preferences", async (c) => {
   const userId = c.get("userId" as never) as string;
   const biz = await ensureBusiness(userId);
@@ -181,7 +173,6 @@ businessRouter.get("/preferences", async (c) => {
   });
 });
 
-// PATCH /business/preferences
 businessRouter.patch(
   "/preferences",
   zValidator("json", preferencesSchema),

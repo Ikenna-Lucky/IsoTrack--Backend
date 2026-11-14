@@ -12,7 +12,6 @@ export interface Coordinates {
   lng: number;
 }
 
-// Hono context variable types
 declare module "hono" {
   interface ContextVariableMap {
     userId: string;

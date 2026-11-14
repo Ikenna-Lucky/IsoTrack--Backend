@@ -92,7 +92,6 @@ const envSchema = z
 
     ...microsoftMailFields,
 
-    // Phase 8
     TWILIO_ACCOUNT_SID: z.string().optional(),
     TWILIO_AUTH_TOKEN: z.string().optional(),
     TWILIO_PHONE_NUMBER: z.string().optional(),

@@ -16,7 +16,7 @@ export const notifications = pgTable(
     message: text("message").notNull(),
     isRead: boolean("is_read").default(false).notNull(),
     status: notificationStatusEnum("status").default("pending").notNull(),
-    metadata: text("metadata"), // JSON stringified extra context
+    metadata: text("metadata"), // Extra context stored as a JSON string.
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

@@ -1,15 +1,5 @@
-/**
- * Database seeder — realistic Nigerian logistics test data.
- * Run with: bun run src/db/seed.ts
- *
- * Creates:
- *  - 2 businesses
- *  - 3 drivers (bike, car, van)
- *  - 4 customers
- *  - 10 shipments across all statuses
- *  - Shipment events for each shipment
- *  - Notifications for users
- */
+// Sample accounts, shipments and event histories for local development.
+// Run with bun run db:seed.
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 import { hashSync } from "bcryptjs";
@@ -25,8 +15,6 @@ if (!DATABASE_URL) {
 
 const sql = neon(DATABASE_URL);
 const db = drizzle(sql, { schema });
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const id = () => nanoid();
 const passwordHash = hashSync("Password123!", 10);
@@ -45,32 +33,24 @@ function daysAgo(n: number): Date {
   return d;
 }
 
-// ─── Seed data ────────────────────────────────────────────────────────────────
-
 async function seed(): Promise<void> {
   console.log("🌱 Seeding IsoTrack database with Nigerian logistics data...\n");
 
-  // ── 1. Users ──────────────────────────────────────────────────────────────
-
   console.log("  → Inserting users...");
 
-  // Business owners
   const businessUser1Id = id();
   const businessUser2Id = id();
 
-  // Drivers
   const driverUser1Id = id();
   const driverUser2Id = id();
   const driverUser3Id = id();
 
-  // Customers
   const customerUser1Id = id();
   const customerUser2Id = id();
   const customerUser3Id = id();
   const customerUser4Id = id();
 
   await db.insert(schema.users).values([
-    // Business accounts
     {
       id: businessUser1Id,
       email: "admin@jumialogistics.ng",
@@ -96,7 +76,6 @@ async function seed(): Promise<void> {
       updatedAt: daysAgo(20),
     },
 
-    // Driver accounts
     {
       id: driverUser1Id,
       email: "tunde.rider@isotrack.ng",
@@ -134,7 +113,6 @@ async function seed(): Promise<void> {
       updatedAt: daysAgo(3),
     },
 
-    // Customer accounts
     {
       id: customerUser1Id,
       email: "ngozi.customer@gmail.com",
@@ -185,8 +163,6 @@ async function seed(): Promise<void> {
     },
   ]);
 
-  // ── 2. Businesses ─────────────────────────────────────────────────────────
-
   console.log("  → Inserting businesses...");
 
   const business1Id = id();
@@ -224,8 +200,6 @@ async function seed(): Promise<void> {
       updatedAt: daysAgo(20),
     },
   ]);
-
-  // ── 3. Drivers ────────────────────────────────────────────────────────────
 
   console.log("  → Inserting drivers...");
 
@@ -275,15 +249,12 @@ async function seed(): Promise<void> {
     },
   ]);
 
-  // ── 4. Shipments ──────────────────────────────────────────────────────────
-
   console.log("  → Inserting shipments...");
 
   const shipmentIds = Array.from({ length: 10 }, () => id());
   const trackingIds = Array.from({ length: 10 }, () => trackingId());
 
   await db.insert(schema.shipments).values([
-    // Delivered
     {
       id: shipmentIds[0]!,
       trackingId: trackingIds[0]!,
@@ -316,7 +287,6 @@ async function seed(): Promise<void> {
       createdAt: daysAgo(8),
       updatedAt: daysAgo(6),
     },
-    // In transit
     {
       id: shipmentIds[1]!,
       trackingId: trackingIds[1]!,
@@ -349,7 +319,6 @@ async function seed(): Promise<void> {
       createdAt: daysAgo(2),
       updatedAt: new Date(),
     },
-    // Out for delivery
     {
       id: shipmentIds[2]!,
       trackingId: trackingIds[2]!,
@@ -382,7 +351,6 @@ async function seed(): Promise<void> {
       createdAt: daysAgo(1),
       updatedAt: new Date(),
     },
-    // Pending
     {
       id: shipmentIds[3]!,
       trackingId: trackingIds[3]!,
@@ -412,7 +380,6 @@ async function seed(): Promise<void> {
       createdAt: new Date(),
       updatedAt: new Date(),
     },
-    // Assigned
     {
       id: shipmentIds[4]!,
       trackingId: trackingIds[4]!,
@@ -443,7 +410,6 @@ async function seed(): Promise<void> {
       createdAt: daysAgo(1),
       updatedAt: new Date(),
     },
-    // Picked up
     {
       id: shipmentIds[5]!,
       trackingId: trackingIds[5]!,
@@ -476,7 +442,6 @@ async function seed(): Promise<void> {
       createdAt: new Date(),
       updatedAt: new Date(),
     },
-    // Failed
     {
       id: shipmentIds[6]!,
       trackingId: trackingIds[6]!,
@@ -508,7 +473,6 @@ async function seed(): Promise<void> {
       createdAt: daysAgo(4),
       updatedAt: daysAgo(2),
     },
-    // Cancelled
     {
       id: shipmentIds[7]!,
       trackingId: trackingIds[7]!,
@@ -536,7 +500,6 @@ async function seed(): Promise<void> {
       createdAt: daysAgo(5),
       updatedAt: daysAgo(4),
     },
-    // Another delivered (different business)
     {
       id: shipmentIds[8]!,
       trackingId: trackingIds[8]!,
@@ -569,7 +532,6 @@ async function seed(): Promise<void> {
       createdAt: daysAgo(11),
       updatedAt: daysAgo(9),
     },
-    // Pending (unpaid)
     {
       id: shipmentIds[9]!,
       trackingId: trackingIds[9]!,
@@ -599,8 +561,6 @@ async function seed(): Promise<void> {
       updatedAt: new Date(),
     },
   ]);
-
-  // ── 5. Shipment events ────────────────────────────────────────────────────
 
   console.log("  → Inserting shipment events...");
 
@@ -869,8 +829,6 @@ async function seed(): Promise<void> {
       createdAt: new Date(),
     },
   ]);
-
-  // ── 6. Notifications ──────────────────────────────────────────────────────
 
   console.log("  → Inserting notifications...");
 

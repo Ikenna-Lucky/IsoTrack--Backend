@@ -11,7 +11,7 @@ import {
 } from "../db/mail-cache-store.ts";
 import { createGraphEmailSender } from "../lib/graph-email.ts";
 const scopes = ["https://graph.microsoft.com/Mail.Send"];
-// Bound Microsoft discovery/token calls without logging credentials or provider bodies.
+// Time out discovery and token calls so email jobs cannot hang on authentication.
 const network: INetworkModule = {
   sendGetRequestAsync: <T>(url: string, options?: NetworkRequestOptions) =>
     networkRequest<T>(url, options),

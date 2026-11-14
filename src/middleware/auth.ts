@@ -18,7 +18,6 @@ export const authenticate = createAuthenticationMiddleware({
   },
 });
 
-// Role-based access guard
 export const requireRole = (...roles: UserRole[]) =>
   createMiddleware(async (c: Context, next: Next) => {
     const role = c.get("userRole");

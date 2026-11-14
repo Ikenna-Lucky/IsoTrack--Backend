@@ -1,5 +1,4 @@
-// Node 24's JUnit reporter includes final counters as XML comments. Treat this
-// generated format strictly so missing/truncated reports cannot become passes.
+// Node 24 puts final JUnit counts in XML comments. Reject missing or truncated counts.
 export function requirePassingReport(xml) {
   if (
     !xml.includes("<testsuites>") ||

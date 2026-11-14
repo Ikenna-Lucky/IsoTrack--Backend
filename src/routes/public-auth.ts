@@ -45,8 +45,7 @@ const registerSchema = z
     vehiclePlate: z.string().min(3).max(20).optional(),
   })
   .strict();
-// Public dummy hash at the same cost as newly stored credentials; never hash a
-// fresh dummy password per attempt or claim HTTP timing is exactly constant.
+// Reuse a dummy hash at the normal bcrypt cost for unknown accounts.
 const DUMMY_HASH =
   "$2b$12$Lj1olQnAnStsbNPNatg0Q.WzP4xey46Gi2FBtz7M.ToD3qASc6SKi";
 export interface AuthSecurityEvent {
@@ -179,7 +178,7 @@ export function createPublicAuthRouter(deps: Dependencies) {
             parsed.data.password,
             user?.passwordHash ?? DUMMY_HASH,
           );
-          // Equalize short paths without claiming statistical timing resistance.
+          // Delay fast failures too; this does not guarantee constant-time responses.
           await delay(
             Math.max(0, 350 + randomInt(0, 51) - (performance.now() - started)),
           );

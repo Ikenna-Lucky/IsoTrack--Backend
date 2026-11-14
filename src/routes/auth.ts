@@ -29,18 +29,12 @@ import { success, error } from "@/lib/response";
 import { createAccountDeactivationRouter } from "./account-deactivation";
 import { apiProtection } from "../services/api-protection";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const REFRESH_COOKIE = "iso_refresh_token";
 const BCRYPT_ROUNDS = 12;
-
-// ─── Cookie helpers ───────────────────────────────────────────────────────────
 
 function clearRefreshCookie(c: Parameters<typeof deleteCookie>[0]) {
   deleteCookie(c, REFRESH_COOKIE, { path: "/" });
 }
-
-// ─── Router ───────────────────────────────────────────────────────────────────
 
 export const authRouter = new Hono();
 authRouter.route(
@@ -77,7 +71,6 @@ authRouter.route(
       }),
   }),
 );
-// ─── POST /auth/refresh ───────────────────────────────────────────────────────
 
 authRouter.route(
   "/",
@@ -91,8 +84,6 @@ authRouter.route(
     sanitize: sanitizeUser,
   }),
 );
-// ─── PATCH /auth/me ───────────────────────────────────────────────────────────
-// Update the authenticated user's own profile (name, phone, avatar URL).
 
 const updateMeSchema = z.object({
   name: z.string().min(2).max(100).optional(),
@@ -147,9 +138,6 @@ authRouter.route(
     comparePassword: compare,
   }),
 );
-
-// ─── PATCH /auth/password ─────────────────────────────────────────────────────
-// Change the authenticated user's password.
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),

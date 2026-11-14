@@ -21,8 +21,6 @@ export const driversRouter = new Hono();
 
 driversRouter.use("*", authenticate);
 
-// ─── Schemas ──────────────────────────────────────────────────────────────────
-
 const statusSchema = z.object({
   status: z.enum(["available", "on_delivery", "offline"]),
 });
@@ -71,13 +69,7 @@ const notifPrefsSchema = z.object({
   weeklyReport: z.object({ push: z.boolean(), email: z.boolean() }).optional(),
 });
 
-// ─── GET /drivers ─────────────────────────────────────────────────────────────
-// Business: list drivers in its private fleet.
-
 driversRouter.route("/", createCollectionRouter(writeStore, "drivers"));
-
-// ─── GET /drivers/me ──────────────────────────────────────────────────────────
-// Driver: get own profile.
 
 driversRouter.get("/me", requireRole("driver"), async (c) => {
   const userId = c.get("userId" as never) as string;
@@ -86,9 +78,6 @@ driversRouter.get("/me", requireRole("driver"), async (c) => {
 
   return success(c, { data: { ...driver, user: sanitizeUser(driver.user) } });
 });
-
-// ─── PATCH /drivers/me ────────────────────────────────────────────────────────
-// Driver: update vehicle type and/or plate number.
 
 driversRouter.patch(
   "/me",
@@ -127,9 +116,6 @@ driversRouter.patch(
   },
 );
 
-// ─── GET /drivers/me/notifications ───────────────────────────────────────────
-// Return the driver's stored notification preferences (or sensible defaults).
-
 driversRouter.get("/me/notifications", requireRole("driver"), async (c) => {
   const userId = c.get("userId" as never) as string;
   const driver = await findDriverByUserId(userId);
@@ -140,9 +126,6 @@ driversRouter.get("/me/notifications", requireRole("driver"), async (c) => {
     DEFAULT_NOTIF_PREFS;
   return success(c, { data: { ...DEFAULT_NOTIF_PREFS, ...prefs } });
 });
-
-// ─── PATCH /drivers/me/notifications ─────────────────────────────────────────
-// Persist the driver's notification preferences.
 
 driversRouter.patch(
   "/me/notifications",
@@ -176,9 +159,6 @@ driversRouter.patch(
   },
 );
 
-// ─── PATCH /drivers/me/status ─────────────────────────────────────────────────
-// Driver: toggle online/offline status.
-
 driversRouter.patch(
   "/me/status",
   requireRole("driver"),
@@ -197,9 +177,6 @@ driversRouter.patch(
   },
 );
 
-// ─── PATCH /drivers/me/location ───────────────────────────────────────────────
-// Driver: update GPS location.
-
 driversRouter.patch(
   "/me/location",
   requireRole("driver"),
@@ -216,16 +193,10 @@ driversRouter.patch(
   },
 );
 
-// ─── GET /drivers/available ───────────────────────────────────────────────────
-// Business: list only drivers whose status is "available".
-
 driversRouter.route(
   "/",
   createCollectionRouter(writeStore, "available-drivers"),
 );
-
-// ─── GET /drivers/:id ─────────────────────────────────────────────────────────
-// Business: get a specific driver by ID.
 
 driversRouter.get("/:id", requireRole("business"), async (c) => {
   const id = c.req.param("id")!;
