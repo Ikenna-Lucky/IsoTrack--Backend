@@ -5,11 +5,12 @@ import { drivers } from "@/db/schema";
 import type { Driver, NewDriver } from "@/db/schema";
 import type { Coordinates } from "@/types";
 
-// ─── Read ──────────────────────────────────────────────────────────────────────
-
 export async function findDriverById(id: string, ownerUserId: string) {
   return db.query.drivers.findFirst({
-    where: and(eq(drivers.id, id), fleetAccessPredicate(drivers.businessId, ownerUserId)),
+    where: and(
+      eq(drivers.id, id),
+      fleetAccessPredicate(drivers.businessId, ownerUserId),
+    ),
     with: { user: true },
   });
 }
@@ -20,15 +21,6 @@ export async function findDriverByUserId(userId: string) {
     with: { user: true },
   });
 }
-
-export async function findAvailableDrivers(ownerUserId: string) {
-  return db.query.drivers.findMany({
-    where: and(eq(drivers.status, "available"), fleetAccessPredicate(drivers.businessId, ownerUserId)),
-    with: { user: true },
-  });
-}
-
-// ─── Write ─────────────────────────────────────────────────────────────────────
 
 export async function createDriver(data: NewDriver): Promise<Driver> {
   const [driver] = await db.insert(drivers).values(data).returning();

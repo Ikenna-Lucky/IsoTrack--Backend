@@ -52,6 +52,7 @@ export function postgresFixture(options = {}) {
       const compiled = dialect.sqlToQuery(statement);
       const literal = (value) => {
         if (value === null) return "NULL";
+        if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
         if (typeof value === "number" && Number.isFinite(value))
           return String(value);
         if (typeof value !== "string")

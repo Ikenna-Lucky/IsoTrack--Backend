@@ -1,6 +1,9 @@
 import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
+import { emailRetrySeconds } from "../lib/email-retry.ts";
 import type { SQL } from "drizzle-orm";
+import { driverShipmentNotificationEnabled } from "../lib/driver-notification-preferences.ts";
+import { businessShipmentEmailEnabled } from "../lib/business-notification-preferences.ts";
 import {
   claimOutboxStatement,
   outboxContextStatement,
@@ -15,6 +18,9 @@ export interface OutboxStore {
 const contextSchema = z.object({
   name: z.string(),
   email: z.string(),
+  recipientRole: z.enum(["business", "customer", "driver"]),
+  businessPreferences: z.unknown(),
+  driverPreferences: z.unknown(),
   kind: z.enum(["shipment_status", "payment_confirmed"]),
   channel: z.enum(["in_app", "email"]),
   payload: z.object({
@@ -39,6 +45,7 @@ const contextSchema = z.object({
 });
 export interface NotificationEmail {
   eventId: string;
+  recipientRole?: "business" | "customer" | "driver";
   to: string;
   name: string;
   trackingId: string;
@@ -79,6 +86,18 @@ export function createOutboxProcessor(
         return;
       }
       const context = contextSchema.parse(row);
+      if (
+        context.recipientRole === "driver" &&
+        (context.kind !== "shipment_status" ||
+          !driverShipmentNotificationEnabled(
+            context.payload.status,
+            context.channel,
+            context.driverPreferences,
+          ))
+      ) {
+        await store.execute(completeOutboxStatement(id, token, true));
+        return;
+      }
       const title = titles[context.payload.status]!;
       const amount = new Intl.NumberFormat("en-NG", {
         style: "currency",
@@ -89,10 +108,36 @@ export function createOutboxProcessor(
           ? `Payment of ${amount} for shipment ${context.payload.trackingId} has been confirmed.`
           : `Shipment ${context.payload.trackingId}: ${title.toLowerCase()}.`;
       if (context.channel === "in_app") {
-        await store.execute(completeInAppStatement(id, token, title, message));
+        await store.execute(
+          completeInAppStatement(
+            id,
+            token,
+            title,
+            message,
+            context.recipientRole === "business" &&
+              context.kind === "shipment_status" &&
+              businessShipmentEmailEnabled(
+                context.payload.status,
+                context.businessPreferences,
+              ),
+          ),
+        );
       } else {
+        // Recheck at send time: opting out also suppresses queued/retried emails.
+        // Recovery, recipient proof and customer emails use separate policies.
+        if (
+          context.recipientRole === "business" &&
+          !businessShipmentEmailEnabled(
+            context.payload.status,
+            context.businessPreferences,
+          )
+        ) {
+          await store.execute(completeOutboxStatement(id, token, true));
+          return;
+        }
         await sendEmail({
           eventId: id,
+          recipientRole: context.recipientRole,
           to: z.string().email().parse(context.email),
           name: context.name,
           trackingId: context.payload.trackingId,
@@ -102,9 +147,11 @@ export function createOutboxProcessor(
         if (!(await store.execute(completeOutboxStatement(id, token))).length)
           throw new Error("Lease lost after delivery");
       }
-    } catch {
+    } catch (cause) {
       // Persist a stable diagnostic code; provider errors may contain addresses.
-      await store.execute(failOutboxStatement(id, token));
+      await store.execute(
+        failOutboxStatement(id, token, emailRetrySeconds(cause)),
+      );
       throw new Error("Notification delivery failed");
     }
   };

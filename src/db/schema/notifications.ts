@@ -16,12 +16,20 @@ export const notifications = pgTable(
     message: text("message").notNull(),
     isRead: boolean("is_read").default(false).notNull(),
     status: notificationStatusEnum("status").default("pending").notNull(),
-    metadata: text("metadata"), // JSON stringified extra context
+    metadata: text("metadata"), // Extra context stored as a JSON string.
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
   (t) => [
+    index("notifications_user_page_idx").on(
+      t.userId,
+      t.createdAt.desc(),
+      sql`${t.id} collate "C" desc`,
+    ),
+    index("notifications_user_unread_idx")
+      .on(t.userId, t.createdAt, sql`${t.id} collate "C"`)
+      .where(sql`not ${t.isRead}`),
     index("notifications_user_id_idx").on(t.userId),
     index("notifications_is_read_idx").on(t.isRead),
     index("notifications_created_at_idx").on(t.createdAt),

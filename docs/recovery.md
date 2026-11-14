@@ -92,3 +92,113 @@ The commands and snapshot limitations follow PostgreSQL 17's
 [logical backup documentation](https://www.postgresql.org/docs/17/backup-dump.html)
 and [pg_restore documentation](https://www.postgresql.org/docs/17/app-pgrestore.html),
 checked 2026-11-04.
+
+## Hosted preview rehearsal preparation — 2026-11-08
+
+Status: planned; no hosted backup or restore executed. Source is the isolated
+preview database. Destination must be a new empty recovery-only database on a separate Neon branch or project,
+with matching PostgreSQL major version and no Render service or application
+workers attached. Never select the production database or restore into preview.
+Direct/unpooled TLS connection strings belong only in ignored
+.env.recovery-hosted, under RECOVERY_SOURCE_DATABASE_URL and
+RECOVERY_TARGET_DATABASE_URL. No provider secret belongs in the evidence report.
+
+Before executing: verify source identity against the private preview configuration,
+verify target host differs from both preview and live hosts, verify PostgreSQL
+versions and an empty target, and bound backup size/runtime to the small portfolio
+fixture. Abort on unexpected application tables. Never use --clean or silently
+replace an existing target. The existing recovery:drill command remains local-only;
+these URLs must not be passed to that fixture suite.
+
+Hosted acceptance: custom-format archive with checksum/size and snapshot identity;
+consistent snapshot comparison for all public/drizzle tables; restored migration
+history, foreign keys and payment receipt/refund invariants; app checks with outbound
+email/payment/reconciliation/retention disabled and isolated Redis if required.
+Measure backup, restore and validation separately. Keep recovered credentials,
+sessions and pending side effects isolated; no traffic cutover is part of this
+exercise. Do not mutate restored rows before content equality is verified.
+
+A successful rehearsal establishes recovery from this archive and dataset only.
+It does not establish scheduled backups, encrypted independent retention,
+provider point-in-time recovery, live payment reconciliation or production RPO/RTO.
+
+## Hosted operator command
+
+Run `node scripts/hosted-recovery.mjs check` for read-only isolation and empty-target
+checks. Run `node scripts/hosted-recovery.mjs restore` for the explicitly authorized
+rehearsal. It reads only `.env.recovery-hosted` and `.env.preview`; never pass a URL
+as a command-line argument. PostgreSQL 17 native tools must be installed; override
+their directory with `RECOVERY_PG_BIN` if necessary. The target database name must
+be `isotrack_recovery`, on a different Neon endpoint from preview and live.
+
+The source stays in a read-only repeatable-read transaction while an exported
+snapshot is shared with pg_dump. Sorted row-content hashes and counts therefore
+refer to the same snapshot as the archive, even if preview receives later writes.
+The archive is bounded to 32 MiB for this portfolio drill. Native tools have time
+limits, and restore uses a single transaction without --clean. The destination
+must have no other clients; do not attach a service or use it during the drill.
+
+Archives are saved as AES-256-GCM ciphertext under ignored `.verification/`, with
+a separate per-run key file in that directory. Restore reads and authenticates
+the saved ciphertext and checks its plaintext checksum before using it. Keeping
+the key beside the archive is local drill convenience, not independent secure
+backup storage. Protect both files; do not commit or upload either. A new run does
+not overwrite prior archives/reports and refuses a populated destination.
+
+Each run writes `reports/hosted-recovery-RUN_ID.json`, including failure stage,
+table counts/hashes, constraint and migration checks, archive identity and measured
+durations. Provider errors and record values are deliberately not printed.
+Validation checks foreign-key rows even for NOT VALID constraints and verifies
+the restored preview owner's password hash with the private fixture password.
+No HTTP login, workers, Stripe request, SMTP delivery, failover or DNS switch is
+performed by this command. Restored sessions/tokens/outbox rows remain isolated;
+they must be reviewed before any later traffic cutover.
+
+## Hosted result — 2026-11-08
+
+Scoped snapshot recovery passed for 19 preview tables, 95 constraint definitions,
+24 foreign-key row checks and 16 migrations. Restored owner credential verifies;
+receipt/refund consistency checks pass. Backup took 33.037s and restore 54.456s.
+Read-only follow-up validation took 29.104s after checker diagnosis; no uninterrupted
+RTO claim. See production-readiness.md for report identities, failed attempts,
+CRLF journal diagnosis and scope limits. One historical fleet FK remains NOT VALID
+in both databases, with zero observed row violations. No normal service is attached
+to the restored database. Keep it isolated; the populated-target guard now refuses
+another restore. Use a newly provisioned empty destination for any future rehearsal.
+
+## Full application smoke against a restored database
+
+After successful logical restore validation, run `npm run recovery:smoke` with
+Node 24, Bun and Docker available. If Bun is not on PATH, set BUN_EXECUTABLE to
+its absolute executable path. The command reads the same ignored recovery and
+preview files, and requires a successful hosted-recovery report under reports/.
+It checks target identity and restored financial content before starting anything.
+Do not connect any other service to this recovery database during the exercise.
+
+This is an explicit manual command, not part of ordinary CI: it uses private
+hosted connections and makes isolated recovery database writes. It starts the
+full Bun application with normal Neon HTTPS transport and disposable local Redis.
+Only recovery database HTTP traffic is allowed from the application; workers,
+retention and Stripe are disabled. Fresh signing keys prevent test tokens from
+being useful on preview. Dummy email settings contain no provider credentials.
+No existing runtime environment or deployed URL is modified.
+
+Seven sequential cases cover readiness, restored logins, tenant denial, stored
+payment/refund projections, a fresh shipment create/cancel with idempotency, and
+restart/session revocation. Checks preserve original financial table hashes and
+verify no notification delivery attempts advance. Startup Redis connection may
+briefly return 503; the restart check records each status and waits at most six
+attempts, rather than treating initial listening as full request readiness.
+The test supplies the trusted Origin required for cookie logout.
+
+Reports are reports/recovery-smoke-RUN_ID.json and retain case status/timing,
+backup identity and cleanup result without passwords or tokens. Failed attempts
+are preserved. App processes and disposable Redis are stopped in finally; test
+shipments/sessions/outbox rows remain only in recovery. Re-running creates a new
+shipment; it does not truncate restored data. Financial drift from the baseline
+causes a stop. Keep the recovery branch disconnected afterward.
+
+On 2026-11-08 all seven cases passed against the hosted restore with cleanup
+verified. This establishes local application recovery over hosted storage, not
+Render deployment, browser UI recovery, provider reconciliation, public traffic
+cutover or a production session/token invalidation policy.

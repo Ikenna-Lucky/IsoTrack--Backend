@@ -16,12 +16,6 @@ integration-results.xml
 !.env.example
 !.env.preview.example
 
-# Bun lockfile (keep bun.lockb but ignore if using npm)
-# bun.lockb
-
-# Drizzle migrations (keep the folder, ignore generated)
-# drizzle/
-
 # OS
 .DS_Store
 Thumbs.db

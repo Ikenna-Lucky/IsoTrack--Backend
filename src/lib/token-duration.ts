@@ -1,4 +1,4 @@
-/** Deliberately accept one bounded format shared by JWT and cookie lifetimes. */
+// JWT expiry and cookie max-age use the same duration format.
 export function tokenDurationSeconds(value: string): number {
   const match = /^([1-9]\d*)([smhd])$/.exec(value);
   if (!match) throw new Error("Token lifetime must be a positive duration such as 15m or 7d");

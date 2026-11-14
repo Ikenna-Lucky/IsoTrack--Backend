@@ -12,8 +12,8 @@ export const stripe =
         maxNetworkRetries: 1,
       })
     : null;
-// Conservative binding: credential rotation requires reconciliation of pending
-// attempts, even if the new credential belongs to the same Stripe account.
+// Rotating the key changes this context, even for the same Stripe account.
+// Reconcile pending attempts before rotating.
 export const stripeContext = hashValue(
   `${stripeApiVersion}:${env.STRIPE_SECRET_KEY ?? "unconfigured"}`,
 );

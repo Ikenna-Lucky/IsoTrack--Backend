@@ -1,7 +1,5 @@
-// Enums must be exported first — all table files import from here
 export * from "./enums";
 
-// Tables
 export * from "./users";
 export * from "./auth-sessions";
 export * from "./account-actions";
@@ -17,3 +15,4 @@ export * from "./driver-invitations";
 export * from "./delivery-confirmations";
 export * from "./shipment-exceptions";
 export * from "./retention-runs";
+export * from "./microsoft-mail-cache";

@@ -48,7 +48,7 @@ export function assertPreviewIsolation(config: Record<string, unknown>) {
     ["APP_URL", "PREVIEW_APP_HOST", "LIVE_APP_HOST", ["https:"]],
   ] as const) {
     const url = new URL(required(urlName));
-    // Neon pooler and direct endpoint spellings must not defeat the live-host check.
+    // Treat Neon pooler and direct hostnames as the same endpoint.
     const host = (value: string) => {
       const parsed = new URL(`https://${value}`);
       if (

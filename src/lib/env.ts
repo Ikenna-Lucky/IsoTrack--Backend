@@ -3,6 +3,11 @@ import { tokenDurationSeconds } from "./token-duration";
 import { trustedProxyAddresses } from "./request-peer";
 import { assertPreviewIsolation } from "./preview-isolation";
 import { validateStripeConfig } from "./stripe-config";
+import { databaseConfig } from "./database-config";
+import {
+  microsoftMailFields,
+  microsoftMailConfig,
+} from "./microsoft-mail-config";
 
 const tokenLifetime = z.string().refine((value) => {
   try {
@@ -49,6 +54,7 @@ const envSchema = z
       }, "Use comma-separated exact proxy IP addresses, without CIDRs or wildcards"),
 
     DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+    DATABASE_DRIVER: z.enum(["neon", "postgres"]).default("neon"),
     RETENTION_ENABLED: z
       .enum(["true", "false"])
       .default("false")
@@ -84,13 +90,8 @@ const envSchema = z
         .optional(),
     ),
 
-    GMAIL_USER: z.string().email("GMAIL_USER must be a valid Gmail address"),
-    GMAIL_APP_PASSWORD: z
-      .string()
-      .min(16, "GMAIL_APP_PASSWORD must be a 16-char App Password"),
-    EMAIL_FROM: z.string().default("IsoTrack <noreply@isotrack.app>"),
+    ...microsoftMailFields,
 
-    // Phase 8
     TWILIO_ACCOUNT_SID: z.string().optional(),
     TWILIO_AUTH_TOKEN: z.string().optional(),
     TWILIO_PHONE_NUMBER: z.string().optional(),
@@ -99,6 +100,28 @@ const envSchema = z
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
   })
   .superRefine((value, context) => {
+    if (value.NOTIFICATION_WORKERS_ENABLED) {
+      try {
+        microsoftMailConfig(value);
+      } catch {
+        context.addIssue({
+          code: "custom",
+          path: ["MICROSOFT_MAIL_CLIENT_ID"],
+          message:
+            "Email workers require Outlook client ID, sender address and cache encryption key. Authorize the sender before enabling workers.",
+        });
+      }
+    }
+    try {
+      databaseConfig(value);
+    } catch {
+      context.addIssue({
+        code: "custom",
+        path: ["DATABASE_URL"],
+        message:
+          "Invalid database adapter or target; local postgres requires a loopback URL and non-production environment",
+      });
+    }
     try {
       validateStripeConfig(value);
     } catch (error) {

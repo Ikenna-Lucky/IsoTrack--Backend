@@ -1,4 +1,5 @@
-import nodemailer from "nodemailer";
+import { createMicrosoftMail } from "../services/microsoft-mail";
+import { database } from "../db";
 import { createDeliveryEmailProcessor } from "./delivery-email";
 import { reportDependency } from "../observability/runtime";
 import { env } from "@/lib/env";
@@ -11,24 +12,12 @@ import {
 } from "./account-email";
 
 export function startNotificationWorker() {
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    requireTLS: true,
-    connectionTimeout: 5000,
-    greetingTimeout: 5000,
-    socketTimeout: 10000,
-    auth: { user: env.GMAIL_USER, pass: env.GMAIL_APP_PASSWORD },
-  });
+  const mail = createMicrosoftMail(env, database);
   const runtime = createOutboxRuntime(
     outboxStore,
     env.UPSTASH_REDIS_URL,
     async (email) => {
-      await transporter.sendMail({
-        from: env.EMAIL_FROM,
-        ...renderNotificationEmail(email, env.FRONTEND_URL),
-      });
+      await mail.send(renderNotificationEmail(email, env.FRONTEND_URL));
     },
     reportDependency,
   );
@@ -39,7 +28,7 @@ export function startNotificationWorker() {
           env.ACCOUNT_ACTION_SECRET,
           env.FRONTEND_URL,
           async (email) => {
-            await transporter.sendMail({ from: env.EMAIL_FROM, ...email });
+            await mail.send(email);
           },
         ),
         () => reportDependency("account_email"),
@@ -52,7 +41,7 @@ export function startNotificationWorker() {
           outboxStore,
           env.DELIVERY_CODE_SECRET,
           async (email) => {
-            await transporter.sendMail({ from: env.EMAIL_FROM, ...email });
+            await mail.send(email);
           },
         ),
         () => reportDependency("delivery_email"),
@@ -65,7 +54,6 @@ export function startNotificationWorker() {
         closeAccountEmails(),
         closeDeliveryEmails(),
       ]);
-      transporter.close();
     },
   };
 }

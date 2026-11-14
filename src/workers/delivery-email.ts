@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
+import { emailRetrySeconds } from "../lib/email-retry.ts";
 import type { WriteStore } from "../lib/idempotency.ts";
 import { deliveryCode, deliveryProof } from "../lib/delivery-code.ts";
 import type { AccountEmail } from "./account-email.ts";
@@ -14,9 +15,10 @@ function finish(
   id: string,
   lease: string,
   state: "sent" | "skipped" | "failed",
+  retrySeconds = 0,
 ) {
   return sql`update delivery_confirmations set delivery_state=case when ${state}='failed' then case when attempts>=5 then 'dead' else 'pending' end else ${state} end,
-  available_at=statement_timestamp()+least(300,power(2,attempts)::int*5)*interval '1 second',lease_token=null,lease_until=null
+  available_at=statement_timestamp()+greatest(least(300,power(2,attempts)::int*5),${retrySeconds}::int)*interval '1 second',lease_token=null,lease_until=null
   where id=${id} and delivery_state='processing' and lease_token=${lease} and lease_until>statement_timestamp() returning json_build_object('done',true) as result`;
 }
 export function createDeliveryEmailProcessor(
@@ -64,8 +66,10 @@ export function createDeliveryEmailProcessor(
           });
           if (!(await store.execute(finish(id, lease, "sent"))).length)
             throw new Error("Delivery email lease lost");
-        } catch {
-          await store.execute(finish(id, lease, "failed"));
+        } catch (cause) {
+          await store.execute(
+            finish(id, lease, "failed", emailRetrySeconds(cause)),
+          );
         }
       }),
     );

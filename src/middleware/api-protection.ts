@@ -3,9 +3,13 @@ import type { Context, MiddlewareHandler } from "hono";
 import type { ApiBudget } from "../lib/api-budget.ts";
 import { budgetPeer } from "../lib/request-peer.ts";
 
-type Group = "tracking" | "shipments" | "payments";
+type Group = "tracking" | "shipments" | "payments" | "account";
 type Phase = "peer" | "account";
 const policies = {
+  account: {
+    read: { peer: 120, account: 60 },
+    write: { peer: 30, account: 10 },
+  },
   tracking: {
     read: { peer: 60, account: 60 },
     write: { peer: 60, account: 60 },
@@ -110,7 +114,7 @@ export function createApiProtection(deps: {
     };
 }
 
-/** A common outer bound runs before authentication, JSON validation or providers. */
+// Limit body size and read time before auth, JSON parsing or provider calls.
 export function apiBodyBoundary(readTimeoutMs = 10000): MiddlewareHandler {
   if (!Number.isSafeInteger(readTimeoutMs) || readTimeoutMs < 1)
     throw new Error("Invalid body deadline");

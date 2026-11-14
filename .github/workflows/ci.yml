@@ -31,6 +31,8 @@ jobs:
         run: bun run lint
       - name: Check types
         run: bun run type-check
+      - name: Validate API contract and generated export
+        run: bun run docs:check
       - name: Build
         run: bun run build
       - name: Unit and HTTP handler tests

@@ -3,8 +3,6 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import type { NewUser, User } from "@/db/schema";
 
-// ─── Read ──────────────────────────────────────────────────────────────────────
-
 export async function findUserById(id: string): Promise<User | null> {
   const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return user ?? null;
@@ -28,8 +26,6 @@ export async function findUserWithProfile(id: string) {
     },
   });
 }
-
-// ─── Write ─────────────────────────────────────────────────────────────────────
 
 export async function createUser(data: NewUser): Promise<User> {
   const [user] = await db
@@ -62,7 +58,5 @@ export async function updateUser(
     .returning();
   return user ?? null;
 }
-
-// ─── Sanitize ──────────────────────────────────────────────────────────────────
 
 export { sanitizeUser } from "../../lib/public-user";

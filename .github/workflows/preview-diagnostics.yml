@@ -1,0 +1,59 @@
+name: Preview latency diagnostics
+
+on:
+  push:
+    branches: [isoTrack-dev-branch]
+    paths:
+      - .github/workflows/preview-diagnostics.yml
+      - scripts/hosted-diagnostics.mjs
+      - scripts/diagnostics-config.mjs
+      - scripts/load-engine.mjs
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Full SHA returned by the deployed preview health/release endpoint
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-preview-latency-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: ${{ github.ref == 'refs/heads/isoTrack-dev-branch' && vars.PREVIEW_DIAGNOSTICS_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    environment: preview-diagnostics
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24.12.0"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.12"
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Validate HTTP-only diagnostics guard
+        run: node --test tests/diagnostics-config.test.mjs tests/load-engine.test.mjs
+      - name: Compare low-rate preview endpoints
+        id: diagnosis
+        env:
+          PREVIEW_DIAGNOSTICS_ENABLED: ${{ vars.PREVIEW_DIAGNOSTICS_ENABLED }}
+          EXPECTED_PREVIEW_SHA: ${{ inputs.release_sha || vars.PREVIEW_DIAGNOSTICS_SHA }}
+          PREVIEW_FIXTURE_PASSWORD: ${{ secrets.PREVIEW_FIXTURE_PASSWORD }}
+        run: node scripts/hosted-diagnostics.mjs "$EXPECTED_PREVIEW_SHA"
+      - name: Retain diagnostic evidence
+        if: ${{ always() && (steps.diagnosis.outcome == 'success' || steps.diagnosis.outcome == 'failure') }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: preview-latency-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/hosted-diagnostics-*.json
+          if-no-files-found: error
+          retention-days: 14

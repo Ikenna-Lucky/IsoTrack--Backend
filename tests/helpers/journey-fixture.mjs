@@ -119,8 +119,7 @@ export function journeyFixture({ stripe } = {}) {
         fileURLToPath(new URL("../../drizzle", import.meta.url)),
       );
 
-      // Neon-shaped HTTP responses, backed by actual PostgreSQL bound queries.
-      // This substitutes vendor transport, never SQL results or database behavior.
+      // Emulate Neon HTTP responses while executing bound queries against PostgreSQL.
       proxy = createServer(async (request, response) => {
         let client;
         try {
@@ -221,6 +220,7 @@ export function journeyFixture({ stripe } = {}) {
             LIVE_APP_HOST: "live.journey.invalid",
             DATABASE_URL:
               "postgresql://fixture:fixture@preview.database.invalid/postgres",
+            DATABASE_DRIVER: "neon",
             PREVIEW_DATABASE_HOST: "preview.database.invalid",
             LIVE_DATABASE_HOST: "live.database.invalid",
             UPSTASH_REDIS_URL: `redis://127.0.0.1:${redisPort}`,
@@ -228,8 +228,6 @@ export function journeyFixture({ stripe } = {}) {
             LIVE_REDIS_HOST: "live.redis.invalid",
             JWT_SECRET: randomUUID() + randomUUID(),
             JWT_REFRESH_SECRET: randomUUID() + randomUUID(),
-            GMAIL_USER: "disabled@example.invalid",
-            GMAIL_APP_PASSWORD: "disabled-fixture-only",
             DELIVERY_CODE_SECRET: this.deliverySecret,
             STRIPE_MODE: stripe ? "sandbox" : "disabled",
             ...(stripe

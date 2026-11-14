@@ -1,4 +1,5 @@
-import nodemailer from "nodemailer";
+import { createGraphTestTransport } from "./graph.mjs";
+
 import { postgresFixture } from "./postgres.mjs";
 import { createOutboxRuntime } from "../../src/workers/outbox-runtime.ts";
 import { dispatchOutbox } from "../../src/workers/outbox-dispatcher.ts";
@@ -13,20 +14,18 @@ const store = {
     return rows ? rows.split("\n").map((line) => JSON.parse(line)) : [];
   },
 };
-const smtp = nodemailer.createTransport({
-  host: "127.0.0.1",
-  port: Number(process.env.TEST_SMTP_PORT),
-  ignoreTLS: true,
+const graph = createGraphTestTransport({
+  port: Number(process.env.TEST_GRAPH_PORT),
 });
 const runtime = createOutboxRuntime(
   store,
   process.env.TEST_REDIS_URL,
   async (email) => {
-    await smtp.sendMail({
+    await graph.send({
       from: "test@example.test",
       ...renderNotificationEmail(email, "https://app.example.test"),
     });
-    process.send?.({ type: "smtp_accepted" });
+    process.send?.({ type: "graph_accepted" });
     // Parent kills this real process in the send/commit acknowledgement window.
     await new Promise(() => {});
   },

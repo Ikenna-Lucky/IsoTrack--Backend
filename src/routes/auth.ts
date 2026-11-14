@@ -24,23 +24,17 @@ import {
   sanitizeUser,
 } from "@/db/queries/users";
 import { db } from "@/db";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { updateUser } from "@/db/queries/users";
 import { success, error } from "@/lib/response";
-
-// ─── Constants ────────────────────────────────────────────────────────────────
+import { createAccountDeactivationRouter } from "./account-deactivation";
+import { apiProtection } from "../services/api-protection";
 
 const REFRESH_COOKIE = "iso_refresh_token";
 const BCRYPT_ROUNDS = 12;
 
-// ─── Cookie helpers ───────────────────────────────────────────────────────────
-
 function clearRefreshCookie(c: Parameters<typeof deleteCookie>[0]) {
   deleteCookie(c, REFRESH_COOKIE, { path: "/" });
 }
-
-// ─── Router ───────────────────────────────────────────────────────────────────
 
 export const authRouter = new Hono();
 authRouter.route(
@@ -77,7 +71,6 @@ authRouter.route(
       }),
   }),
 );
-// ─── POST /auth/refresh ───────────────────────────────────────────────────────
 
 authRouter.route(
   "/",
@@ -91,8 +84,6 @@ authRouter.route(
     sanitize: sanitizeUser,
   }),
 );
-// ─── PATCH /auth/me ───────────────────────────────────────────────────────────
-// Update the authenticated user's own profile (name, phone, avatar URL).
 
 const updateMeSchema = z.object({
   name: z.string().min(2).max(100).optional(),
@@ -137,24 +128,16 @@ authRouter.patch(
   },
 );
 
-// ─── DELETE /auth/me ──────────────────────────────────────────────────────────
-// Permanently delete the authenticated user and all associated data.
-
-authRouter.delete("/me", authenticate, async (c) => {
-  const userId = c.get("userId" as never) as string;
-
-  const user = await findUserById(userId);
-  if (!user) return error(c, "User not found", 404);
-
-  // Cascade delete: drivers/businesses/shipments are handled by FK onDelete cascade.
-  await db.delete(users).where(eq(users.id, userId));
-
-  clearRefreshCookie(c);
-  return success(c, { data: null, message: "Account permanently deleted" });
-});
-
-// ─── PATCH /auth/password ─────────────────────────────────────────────────────
-// Change the authenticated user's password.
+authRouter.route(
+  "/",
+  createAccountDeactivationRouter({
+    authenticate,
+    protectPeer: apiProtection("account", "peer"),
+    protectAccount: apiProtection("account", "account"),
+    store: writeStore,
+    comparePassword: compare,
+  }),
+);
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),

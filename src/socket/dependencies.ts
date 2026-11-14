@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { database } from "@/db";
 import { reportDependency } from "../observability/runtime";
 import { verifyAccessToken } from "@/lib/jwt";
 import {
@@ -13,10 +13,8 @@ import type { SQL } from "drizzle-orm";
 const dialect = new PgDialect();
 function execute(statement: SQL) {
   const query = dialect.sqlToQuery(statement);
-  return db.$client(query.sql, query.params, {
-    fullResults: true,
-    arrayMode: false,
-    fetchOptions: { signal: AbortSignal.timeout(5000) },
+  return database.query(query.sql, query.params, {
+    signal: AbortSignal.timeout(5000),
   });
 }
 
@@ -24,13 +22,13 @@ export const trackingDependencies: TrackingDependencies = {
   verifyToken: verifyAccessToken,
   authorize: async (identities, trackingId) => {
     const result = await execute(socketAccessStatement(identities, trackingId));
-    return result.rows.map((row) => ({
+    return result.map((row) => ({
       socketId: String(row.socket_id),
       role: row.role as SocketGrant["role"],
     }));
   },
   recordLocation: async (identity, location) =>
-    (await execute(recordSocketLocationStatement(identity, location))).rows
+    (await execute(recordSocketLocationStatement(identity, location)))
       .length === 1,
   reportError: () => reportDependency("tracking"),
 };

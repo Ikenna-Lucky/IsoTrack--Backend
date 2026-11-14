@@ -31,22 +31,22 @@ import { startRetention } from "./services/retention";
 import { apiBodyBoundary } from "./middleware/api-protection";
 import { closeApiProtection } from "./services/api-protection";
 import { createReleaseRouter } from "./observability/release";
+import { database } from "./db";
+import { createApiDocsRouter } from "./routes/api-docs";
 
-// Hono app
 const app = new Hono();
 
-// Global middleware
 app.use("*", requestTelemetry(telemetry, logEvent));
 app.use("*", prettyJSON());
 app.use("*", secureHeaders());
 app.use("*", apiCors(env.FRONTEND_URL));
 app.use("/api/v1/*", apiBodyBoundary());
+app.route("/", createApiDocsRouter());
 
 const operations = createOperationalRuntime();
 app.route("/", operations.router);
 app.route("/", createReleaseRouter(env.DEPLOYMENT_ENV, env.RELEASE_SHA));
 
-// ─── API routes (v1) ─────────────────────────────────────────────────────────
 const v1 = new Hono();
 
 v1.route("/auth", authRouter);
@@ -60,7 +60,6 @@ v1.route("/track", trackingRouter);
 
 app.route("/api/v1", v1);
 
-// ─── 404 fallback ─────────────────────────────────────────────────────────────
 app.notFound((c) => {
   return c.json(
     {
@@ -72,12 +71,9 @@ app.notFound((c) => {
   );
 });
 
-// ─── Global error handler ─────────────────────────────────────────────────────
 app.onError(safeErrorHandler(logEvent));
 
-// ─── HTTP server (via @hono/node-server) + Socket.io ─────────────────────────
-// @hono/node-server creates a proper Node.js http.Server under the hood,
-// which Socket.io can attach to. Bun runs Node.js-compatible APIs natively.
+// Share the HTTP server with Socket.IO.
 const httpServer: ServerType = serve({
   fetch: app.fetch,
   port: env.PORT,
@@ -112,6 +108,7 @@ function shutdown() {
     clearTimeout(deadline);
     operations.close();
     closeApiProtection();
+    await database.close();
   };
   void drain().catch(() => {
     logEvent("shutdown_failed");

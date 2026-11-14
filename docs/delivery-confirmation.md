@@ -1,5 +1,7 @@
 # Recipient delivery confirmation
 
+> Current transport: [Outlook Microsoft Graph HTTPS](microsoft-graph-email.md). SMTP-specific setup below is superseded; historical SMTP test evidence is retained as history.
+
 Businesses can deliver to people without IsoTrack accounts. `recipientEmail` is
 independent of `customerId` and `customerEmail`: the latter still links an account
 for existing access/payment behavior. Creation accepts optional `recipientEmail`.
